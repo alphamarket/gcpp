@@ -1,9 +1,16 @@
-#ifndef CPPGC_HPP
-#define CPPGC_HPP
+#ifndef GCPP_HPP
+#define GCPP_HPP
 
-#include "gcpp/gc.hpp"
+#ifndef ENABLE_GCPP_V0
+/*
+ * Enable gcpp version 0
+ */
 
-#define gc_new          new(::GC)
-#define gc_collect()    gc::collect()
+#   include "gcpp.old/gc.hpp"
+
+#   define gc_new          new(::GC)
+#   define gc_collect()    gc::collect()
+#else
+#endif
 
 #endif
