@@ -3,6 +3,7 @@
 
 #include "cppgc/gc.hpp"
 
-#define gc_new new(::GC)
+#define gc_new          new(::GC)
+#define gc_collect()    gc::collect()
 
 #endif
