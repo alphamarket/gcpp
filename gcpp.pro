@@ -5,6 +5,7 @@
 TEMPLATE = app
 TARGET = gcpp
 INCLUDEPATH += . gcpp.0 test test/hpp test/TestCases
+CONFIG += c++11
 
 # Input
 HEADERS += gcpp.hpp \
@@ -17,5 +18,13 @@ HEADERS += gcpp.hpp \
            test/hpp/registery.hpp \
            test/hpp/testCase.hpp \
            test/hpp/teststrap.hpp \
-           test/TestCases/cppgcTestCaser.hpp
+           test/TestCases/cppgcTestCaser.hpp \
+    gcpp.1/flags.hpp \
+    gcpp.1/gcafx.hpp \
+    gcpp.1/typedefs.hpp \
+    gcpp.1/gc_ptr.hpp
 SOURCES += gcpp.0/gcpp.cpp test/testerMain.cpp
+
+OTHER_FILES += \
+    gcpp.1/inc/gc_ptr.opr.inc \
+    gcpp.1/inc/gc_ptr.ctor.inc

@@ -1,6 +1,11 @@
 #ifndef GCPP_HPP
 #define GCPP_HPP
 
+#ifndef __cplusplus
+#  error "Garbage collecting is only works for C++."
+#endif
+
+
 #undef gc_new
 #undef gc_collect
 
@@ -13,8 +18,10 @@
 #   define ENABLE_GCPP_V1
 #endif
 
+//#define ENABLE_GCPP_V0
+
 #if defined(ENABLE_GCPP_V0)
-/*
+/**
  * Enable gcpp version 0
  */
 #   include "gcpp.0/gc.hpp"
@@ -22,13 +29,17 @@
 #   define gc_new          new(::GC)
 #   define gc_collect()    gc::collect()
 #elif defined(ENABLE_GCPP_V1)
+/**
+ * Enable gcpp version 1
+ */
+#   include "gcpp.1/gc.hpp"
 
-#define gc_new
-#define gc_collect()
+#   define gc_new           new(::GC())
+#   define gc_collect()
 #endif
 
 #if !defined(gc_new) || !defined(gc_collect)
-#   error `gc_new` and `gc_collect` both need to be defined by the end of this file
+#   error "`gc_new` and `gc_collect` both need to be defined by the end of this file."
 #endif
 
 #endif
