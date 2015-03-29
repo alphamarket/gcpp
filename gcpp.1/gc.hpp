@@ -19,22 +19,7 @@ void* operator new(size_t s, const ::GC&)
 }
 
 namespace gc {
-    using namespace std;
-    template<typename T>
-    class gc_node {
-        void* _address;
-        gc_ptr<T>* _val;
-    public:
-        gc_node(gc_ptr<T>* const gp) {
-            this->_address = static_cast<void*>(gp->get());
-            this->_val = gp;
-        }
-        weak_ptr<T> getVal()        const { this->_val; }
-        const void* getAddress()    const { return this->_address; }
-    };
-    class gc_heap {
-
-    };
 }
+
 
 #endif
