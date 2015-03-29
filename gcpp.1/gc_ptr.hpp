@@ -8,10 +8,12 @@
 #include <unordered_map>
 #include "gcafx.hpp"
 namespace gc {
-#   define ptoi(p) reinterpret_cast<std::intptr_Tin>(p)
-#   define where typename = typename
-#   define deleted_signature(_Tin) void(*)(_Tin*)
-#   define should_dynamic_cast(BASE, DRIVED) !std::is_same<BASE, DRIVED>::value && std::is_class<BASE>::value && std::is_base_of<BASE, DRIVED>::value
+#   define ptoi(p)                              reinterpret_cast<std::intptr_Tin>(p)
+#   define where                                typename = typename
+#   define deleted_signature(_Tin)              void(*)(_Tin*)
+#   define should_cast(BASE, DERIVED)           !std::is_same<BASE, DERIVED>::value && std::is_base_of<BASE, DERIVED>::value
+#   define should_dynamic_cast(BASE, DERIVED)   should_cast(BASE, DERIVED) && std::is_class<BASE>::value
+#   define should_static_cast(BASE, DERIVED)    should_cast(BASE, DERIVED) && std::is_class<BASE>::value
     using namespace std;
     /**
      * class gc_ptr decl. this class is to manage pointers to objects
@@ -32,7 +34,7 @@ namespace gc {
         /**
          * The possible events enum
          */
-        enum    class EVENT { E_CTOR, E_DTOR, E_MOVE, E_DELETE };
+        enum class      EVENT { E_CTOR, E_DTOR, E_MOVE, E_DELETE };
         /**
          * The do not delete flag for stop deletion
          * at the end of contained pointer's life
@@ -86,11 +88,7 @@ namespace gc {
             std::enable_if<
                 std::is_convertible<T, _Tout>::value>::type>
         inline _Tout* get() const
-        {
-            if(should_dynamic_cast(_Tout, T))
-                return dynamic_cast<_Tout*>(base::get());
-            return static_cast<_Tout*>(base::get());
-        }
+        { return static_cast<_Tout*>(base::get()); }
         /**
          * the dtor
          */
@@ -109,8 +107,7 @@ namespace gc {
             std::enable_if<
                 std::is_convertible<_Tin, T>::value>::type>
         inline gc_ptr(const gc_ptr<_Tin>& gp)
-            : self(gp.get(), *std::get_deleter<deleted_signature(T)>(gp))
-        { _event(EVENT::E_CTOR, this); }
+        { *this = std::copy(gp); _event(EVENT::E_CTOR, this); }
         /**
          * for move assignments [ only for convertable data types ]
          */
@@ -145,9 +142,7 @@ namespace gc {
          */
         template<typename D, typename B = T, where
             std::enable_if<
-                std::is_class<B>::value &&
-                !std::is_same<B, D>::value &&
-                std::is_base_of<B, D>::value>::type>
+                should_dynamic_cast(B, D)>::type>
         inline gc_ptr(D* p, bool stack_alloced = false)
             : self(dynamic_cast<B*>(p), self::dont_delete)
         { this->is_stack = stack_alloced; _event(EVENT::E_CTOR, this); }
@@ -172,12 +167,11 @@ namespace gc {
         std::enable_if<
             std::is_convertible<_Tin, _Tout>::value>::type>
     inline gc::gc_ptr<_Tout> ref2ptr(_Tin* ref)
-    {
-        if(should_dynamic_cast(_Tout, _Tin))
-            return gc::gc_ptr<_Tout>(dynamic_cast<_Tout*>(ref), true);
-        return gc::gc_ptr<_Tout>(static_cast<_Tout*>(ref), true);
-    }
+    { return gc::gc_ptr<_Tout>(ref, true); }
+
+#   undef should_static_cast
 #   undef should_dynamic_cast
+#   undef should_cast
 #   undef deleted_signature
 #   undef where
 #   undef ptoi
