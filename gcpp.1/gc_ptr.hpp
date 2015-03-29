@@ -4,10 +4,23 @@
 #include <memory>
 
 namespace gc {
-#   define base_gc_ptr(T) std::shared_ptr<T>
     template<typename T>
-    class gc_ptr : public base_gc_ptr(T) {
+    class gc_ptr : public std::shared_ptr<void> {
+        typedef std::shared_ptr<void> base;
     public:
+        void reset() { cout<<"RESET"; base::reset(); }
+
+        void reset(T* p) {
+            cout<<"RESET";
+            base::reset(p);
+        }
+
+        void swap(gc_ptr& p) {
+        cout<<"SWAPED"<<endl;
+            base::swap(p);
+        }
+
+        T* get() const { return static_cast<T*>(base::get()); }
 #       include "inc/gc_ptr.ctor.inc"
 #       include "inc/gc_ptr.opr.inc"
     };
