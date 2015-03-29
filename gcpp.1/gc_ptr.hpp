@@ -8,12 +8,19 @@
 #include "gcafx.hpp"
 namespace gc {
     using namespace std;
-    template<typename T>
-    class gc_weak_ptr;
+    typedef struct gc_weak_ptr_str {
+        std::weak_ptr<void> wp;
+        bool is_ref_casted;
+        template<typename T>
+        gc_weak_ptr_str(const std::shared_ptr<T>& gp, bool is_ref_casted = false) {
+            wp = gp;
+            this->is_ref_casted = is_ref_casted;
+        }
+    } gc_weak_ptr_str;
 #define ptoi(p) reinterpret_cast<std::intptr_t>(p)
-//    typedef std::unordered_multimap<void*, gc_weak_ptr<void>> gc_map;
-//    static gc_map map;
-    template<typename T>
+    typedef std::unordered_multimap<void*, gc_weak_ptr_str> gc_map;
+    static gc_map map;
+    template<typename T, typename = typename std::enable_if<!std::is_pointer<T>::value>::type>
     class gc_ptr : public std::shared_ptr<void> {
         typedef std::shared_ptr<void>   base;
         typedef gc_ptr                  self;
@@ -23,27 +30,42 @@ namespace gc {
             friend class gc_node;
         template<typename _T>
             friend class gc_weak_ptr;
+        friend gc_weak_ptr_str;
     protected:
         static void __prevent_delete(__unused T*) { cout<<"[DELX]"; }
         bool is_ref_casted = false;
     public:
         T* get() const { return static_cast<T*>(base::get()); }
+        /**
+         * for empty ptr
+         */
+        gc_ptr() : base() {}
+        /**
+         * for general pointer assignment [only on no-conversion types between the class' T and the input _T]
+         */
+        template<typename _T, typename = typename std::enable_if<std::is_same<T, _T>::value>::type>
+        gc_ptr(_T* p) : base(p) { }
+        /**
+         * for general pointer delete constructor
+         */
         template<typename _T, typename _Delete>
         gc_ptr(_T* p, _Delete d) : base(p, d) {
-            cout<<"CTOR: "<<p<<" "<<typeid(p).name()<<" "<<this->use_count()<<endl;
-//            map.push_back(std::make_pair<std::uintptr_t, gc_weak_ptr<void>>(ptoi(p), ));
+            assert(*std::get_deleter<void(*)(_T*)>(*this) == d);
         }
         ~gc_ptr() { cout<<std::boolalpha<<"("<<this->is_ref_casted<<")"<<endl; }
-        template<typename _Tin, typename =
-        typename std::enable_if<!std::is_pointer<_Tin>::value>::type>
+        /**
+         * for stack var assignments
+         */
+        template<typename _Tin, typename = typename std::enable_if<!std::is_pointer<_Tin>::value>::type>
         gc_ptr(const _Tin& p) : self(const_cast<_Tin*>(std::addressof(p))) {
             static_assert(std::is_pointer<_Tin>::value, "Cannot assign stack varibales as managed pointers!");
         }
-        template<typename D, typename B = T, typename =
-        typename std::enable_if<std::is_base_of<B, D>::value>::type>
-        gc_ptr(D* p) : self(dynamic_cast<B*>(p), self::__prevent_delete){
-            cout<<"D2B"<<endl;
-        }
+        /**
+         * for base <- derived assignments [only for derived types, does not accept the same type]
+         */
+        template<typename D, typename B = T,
+            typename = typename std::enable_if<!std::is_same<B, D>::value && std::is_base_of<B, D>::value>::type>
+        gc_ptr(D* p): self(dynamic_cast<B*>(p), self::__prevent_delete) { }
 
 
 #       include "inc/gc_ptr.ctor.inc"
@@ -53,20 +75,32 @@ namespace gc {
     gc_ptr<T> ref_cast(T* p) { auto x = gc_ptr<T>(p, gc::gc_ptr<T>::__prevent_delete); x.is_ref_casted = true; return x; }
 
     template<typename T>
-    class gc_weak_ptr  {
+    class gc_weak_ptr : public std::weak_ptr<void> {
+        typedef std::weak_ptr<void> base;
+        typedef gc_weak_ptr self;
         bool is_ref_casted = false;
-        std::weak_ptr<void> wptr;
     public:
-        gc_weak_ptr() {}
+        constexpr gc_weak_ptr() noexcept : base() {}
+
+          template<typename _Tp1, typename = typename
+               std::enable_if<std::is_convertible<_Tp1*, T*>::value>::type>
+        gc_weak_ptr(const std::weak_ptr<_Tp1>& __r) noexcept
+        : base(__r) { }
+
+          template<typename _Tp1, typename = typename
+               std::enable_if<std::is_convertible<_Tp1*, T*>::value>::type>
+        gc_weak_ptr(const std::shared_ptr<_Tp1>& __r) noexcept
+        : base(__r) { }
         template<typename _T>
         gc_weak_ptr(const gc_weak_ptr<_T> &gwp) : is_ref_casted(gwp.is_ref_casted) {
-            this->wptr.swap(gwp);
+            this->swap(gwp);
         }
         gc_weak_ptr(const gc_weak_ptr<T> &gwp) : is_ref_casted(gwp.is_ref_casted) {
-            this->wptr.swap(gwp);
+            this->swap(gwp);
         }
 
-        explicit gc_weak_ptr(const gc_ptr<T>& gp) : wptr(gp), is_ref_casted(gp.is_ref_casted)
+        explicit gc_weak_ptr(const gc_ptr<T>& gp)
+            : base(static_cast<std::shared_ptr<T>>(gp)), is_ref_casted(gp.is_ref_casted)
         { }
 
         const std::weak_ptr<void>& get_ptr() const { return this->wptr; }
