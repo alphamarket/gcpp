@@ -17,6 +17,7 @@ namespace gc {
 #   define ptoi(p)                          reinterpret_cast<std::intptr_Tin>(p)
 #   define where                            typename = typename
 #   define deleter_signature(_Tin)          void(*)(_Tin*)
+#   define _get_deleter(_Tin, gp)           std::get_deleter<deleter_signature(_Tin)>(gp)
 #   define can_cast(FROM, TO)               std::is_convertible<FROM, TO>::value
 #   define can_dynamic_cast(BASE, DERIVED)  can_cast(DERIVED, BASE) && !std::is_same<BASE, DERIVED>::value && std::is_class<BASE>::value && !std::is_const<DERIVED>::value && std::is_base_of<BASE, DERIVED>::value
 #   define can_static_cast(FROM, TO)        can_cast(FROM, TO)
@@ -88,6 +89,7 @@ namespace gc {
         static_assert(!std::is_pointer<T>::value, "cannot accept pointers as type!");
         typedef std::shared_ptr<void>           base;
         typedef gc_ptr                          self;
+        typedef gc_ptr<void>                    _static;
     protected:
 #ifdef  GCPP_DEBUG
     public:
@@ -206,13 +208,14 @@ namespace gc {
 #ifdef GCPP_DEBUG
             if(((self*)p)->is_stack)
                 cout<<"\033[33m(ON STACK)\033[m";
-            else if(e == EVENT::E_CTOR && gc_map.count(wrapped_ptr) && gc_map[wrapped_ptr] == 1 && ++gc_ptr<void>::cnew)
+            else if(e == EVENT::E_CTOR && gc_map::get().count(((self*)p)->get_pure()) && gc_map::get().at(((self*)p)->get_pure()) == 1 && ++gc_ptr<void>::cnew)
                 cout<<"\033[32m(CREATE) \033[m";
             cout<<endl;
 #endif
 #undef      wrapped_ptr
-         }
+        }
     public:
+        inline bool marked_as_stack() const { return this->is_stack; }
         /**
          * for empty ptr
          */
@@ -231,7 +234,7 @@ namespace gc {
             std::enable_if<
                 std::is_convertible<_Tin, T>::value>::type>
         inline gc_ptr(const gc_ptr<_Tin>& gp)
-        { *this = std::copy(gp); _event(EVENT::E_CTOR, this); }
+        { this->operator =(gp); _event(EVENT::E_CTOR, this); }
         /**
          * for move assignments [ only for convertable data types ]
          */
@@ -273,7 +276,11 @@ namespace gc {
         inline gc_ptr(const _Tin& p)
             : self(const_cast<_Tin*>(std::addressof(p)), self::dont_delete)
         {
+            // this is an stack memory
             this->is_stack = true;
+            // considering above std::enable_if conditions there is a need for casting
+            // we won't touch the wrapped pointer :)
+            this->operator*() = static_cast<T>(p);
 #ifdef GCPP_DEBUG
             gc_ptr<void>::stck++;
 #endif
@@ -301,11 +308,12 @@ namespace gc {
         template<typename _Tin, where
             std::enable_if<
                 std::is_convertible<_Tin, T>::value>::type>
-        inline self& operator =(const gc_ptr<_Tin>& gp) {
-            if(auto del_p = std::get_deleter<deleter_signature(T)>(gp))
-                *this = self(gp.get<T>(), *del_p);
+        inline gc_ptr<T>& operator =(const gc_ptr<_Tin>& gp) {
+            if(auto del_p = _get_deleter(_Tin, gp))
+                base::reset(gp.get<T>(), *del_p);
             else
-                *this = self(gp.get<T>());
+                base::reset(gp.get<T>());
+            this->is_stack = gp.marked_as_stack();
             return *this;
         }
         /**
@@ -339,7 +347,7 @@ namespace gc {
             // if not registered in map
             if(!gc_map::get().count(this->get_pure())) {
                 // this should be a `dont_delete` pointer type
-                assert(*std::get_deleter<deleter_signature(void)>(*this) == self::dont_delete);
+                assert(*_get_deleter(void, *this) == self::dont_delete);
                 // just consider the base's count as it is
                 return base::use_count();
             } else
@@ -361,7 +369,11 @@ namespace gc {
         template<typename _Tout = T, where
             std::enable_if<
                 !std::is_void<_Tout>::value>::type>
-        inline _Tout& operator* () const { return *this->get(); }
+        inline const _Tout& operator* () const { return *(this->get<_Tout>()); }
+        template<typename _Tout = T, where
+            std::enable_if<
+                !std::is_void<_Tout>::value>::type>
+        inline _Tout& operator* () { return *(this->get<_Tout>()); }
     };
 #ifdef GCPP_DEBUG
     template<> size_t gc_ptr<void>::ctor = 0;
