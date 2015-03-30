@@ -11,9 +11,15 @@
 #include <ostream>
 #include <algorithm>
 #include "gcafx.hpp"
-#include "flags.hpp"
 #include "gc_ptr.hpp"
-#include "typedefs.hpp"
+
+namespace gc {
+    namespace flags {
+        typedef struct {} gc_flag;
+    }
+}
+
+typedef gc::flags::gc_flag GC;
 
 void* operator new(size_t s, const ::GC&) {
   return ::operator new(s);
