@@ -6,7 +6,7 @@ TEMPLATE = app
 TARGET = gcpp
 INCLUDEPATH += . gcpp.0 test test/hpp test/TestCases
 CONFIG += c++11
-DEFINES += GC_DEBUG
+DEFINES += GCPP_DEBUG
 
 # Input
 HEADERS += gcpp.hpp \
@@ -25,7 +25,3 @@ HEADERS += gcpp.hpp \
     gcpp.1/typedefs.hpp \
     gcpp.1/gc_ptr.hpp
 SOURCES += gcpp.0/gcpp.cpp test/testerMain.cpp
-
-OTHER_FILES += \
-    gcpp.1/inc/gc_ptr.opr.inc \
-    gcpp.1/inc/gc_ptr.ctor.inc

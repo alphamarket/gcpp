@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
-#ifdef GC_DEBUG
+#ifdef GCPP_DEBUG
 #   include <sstream>
 #endif
 
@@ -31,9 +31,10 @@ namespace gc {
         static_assert(!std::is_pointer<T>::value, "cannot accept pointers as type!");
         typedef std::shared_ptr<void>   base;
         typedef gc_ptr                  self;
-#ifdef  GC_DEBUG
+#ifdef  GCPP_DEBUG
     public:
         static size_t ctor;
+        static size_t cnew;
         static size_t dtor;
         static size_t move;
         static size_t stck;
@@ -42,13 +43,14 @@ namespace gc {
             typedef gc_ptr<void> gc;
             std::stringstream ss;
             {
+                ss<<"cnew()#   "<<gc::cnew<<endl;
                 ss<<"ctor()#   "<<gc::ctor<<endl;
                 ss<<"move()#   "<<gc::move<<endl;
                 ss<<"dtor()#   "<<gc::dtor<<endl;
                 ss<<"stack()#  "<<gc::stck<<endl;
                 ss<<"delete()# "<<gc::gdel<<endl;
                 ss<<endl<<"------- INFO -------"<<endl<<endl;
-                ss<<"ctor() = stack() + delete() = dtor()"<<endl;
+                ss<<"cnew() == delete()"<<endl;
             }
             return ss.str();
         }
@@ -69,7 +71,7 @@ namespace gc {
                 c = ++gc_map[p];
             else
                 gc_map.insert({p, (c = 1)});
-#ifdef GC_DEBUG
+#ifdef GCPP_DEBUG
             cout<<"\033[32m[ref][^] -> "<<c<<"\033[m";
 #endif
             return c;
@@ -84,7 +86,7 @@ namespace gc {
             assert(gc_map.count(p) && (c = gc_map[p]--) && c--);
             if(c == 0)
                 gc_map.erase(p);
-#ifdef GC_DEBUG
+#ifdef GCPP_DEBUG
             cout<<"\033[95m[ref][v] -> "<<c<<"\033[m";
 #endif
             return c;
@@ -107,11 +109,12 @@ namespace gc {
          * at the end of contained pointer's life
          */
         static void dont_delete(void* p)
-        {   if(!self::ref_down(p))
-#ifdef GC_DEBUG
-                cout<<"\033[33m(SKIPPED DELETE)\033[m"
+        {
+            if(!self::ref_down(p))
+#ifdef GCPP_DEBUG
+                cout<<"\033[33m(SKIPPED DELETE)\033[m";
 #endif
-                ;
+                { }
         }
         /**
          * The gc deleter handles real ref-count ops for pointers
@@ -120,7 +123,9 @@ namespace gc {
         {
             size_t c = self::ref_down(p);
             if(c == 0) {
-#ifdef GC_DEBUG
+#ifdef GCPP_DEBUG
+                gc_ptr<void>::gdel++;
+                cout<<"\033[95m[GDEL: "<<p<<"]\033[m"<<endl;
                 cout<<"\033[31m(DELETE) \033[m";
 #endif
                 _event(EVENT::E_DELETE, p);
@@ -150,38 +155,36 @@ namespace gc {
 #define     wrapped_ptr ((self*)p)->get_pure()
             switch(e) {
                 case EVENT::E_CTOR:
-#ifdef GC_DEBUG
+#ifdef GCPP_DEBUG
                     gc_ptr<void>::ctor++;
                     cout<<"\033[32m[CTOR: "<<wrapped_ptr<<"] \033[m";
 #endif
                     self::ref_up(wrapped_ptr);
                     break;
                 case EVENT::E_DTOR:
-#ifdef GC_DEBUG
+#ifdef GCPP_DEBUG
                     if(((self*)p)->has_moved) return;
                     gc_ptr<void>::dtor++;
                     cout<<"[DTOR: "<<((self*)p)->get()<<"]";
 #endif
                     break;
                 case EVENT::E_MOVE:
-#ifdef GC_DEBUG
+#ifdef GCPP_DEBUG
                     gc_ptr<void>::move++;
                     cout<<"[MOVE: "<<((self*)p)->get()<<"]";
 #endif
                     break;
                 case EVENT::E_DELETE:
-#ifdef GC_DEBUG
-                    gc_ptr<void>::gdel++;
-                    cout<<"\033[95m[GDEL: "<<p<<"]\033[m"<<endl;
+#ifdef GCPP_DEBUG
 #endif
                     return;
                 default:
                     throw std::invalid_argument("Invalid event passed!");
             }
-#ifdef GC_DEBUG
+#ifdef GCPP_DEBUG
             if(((self*)p)->is_stack)
                 cout<<"\033[33m(ON STACK)\033[m";
-            else if(e == EVENT::E_CTOR && gc_map.count(wrapped_ptr) && gc_map[wrapped_ptr] == 1)
+            else if(e == EVENT::E_CTOR && gc_map.count(wrapped_ptr) && gc_map[wrapped_ptr] == 1 && ++gc_ptr<void>::cnew)
                 cout<<"\033[32m(CREATE) \033[m";
             cout<<endl;
 #endif
@@ -235,16 +238,16 @@ namespace gc {
             std::enable_if<
                 std::is_convertible<_Tin, T>::value>::type>
         inline gc_ptr(
-#ifndef GC_DEBUG
+#ifndef GCPP_DEBUG
             const
 #endif
             gc::gc_ptr<_Tin>&& gp)
         {
-#ifdef GC_DEBUG
+#ifdef GCPP_DEBUG
             gp.has_moved =  true;
 #endif
             *this = std::move(gp);
-#ifdef GC_DEBUG
+#ifdef GCPP_DEBUG
             assert(this->has_moved); this->has_moved = false;
 #endif
             _event(EVENT::E_MOVE, this); }
@@ -270,11 +273,11 @@ namespace gc {
             : self(const_cast<_Tin*>(std::addressof(p)), self::dont_delete)
         {
             this->is_stack = true;
-#ifdef GC_DEBUG
+#ifdef GCPP_DEBUG
             gc_ptr<void>::stck++;
 #endif
             _event(EVENT::E_CTOR, this);
-#ifdef GC_RESTRICTED
+#ifdef GCPP_RESTRICTED
             static_assert(std::is_pointer<_Tin>::value, "cannot assign stack varibales as managed pointers!");
 #endif
         }
@@ -287,7 +290,7 @@ namespace gc {
         inline gc_ptr(D* p, bool stack_alloced = false)
             : self(dynamic_cast<B*>(p), self::gc_delete)
         { this->is_stack = stack_alloced; _event(EVENT::E_CTOR, this);
-#if GC_DEBUG
+#if GCPP_DEBUG
             cout<<"(DYNA CAST)"<<endl;
 #endif
         }
@@ -324,8 +327,9 @@ namespace gc {
          */
         template<typename _Tout> inline gc_ptr<_Tout> as_static_cast() const { return gc_ptr<_Tout>(static_cast<_Tout*>(this->get())); }
     };
-#ifdef GC_DEBUG
+#ifdef GCPP_DEBUG
     template<> size_t gc_ptr<void>::ctor = 0;
+    template<> size_t gc_ptr<void>::cnew = 0;
     template<> size_t gc_ptr<void>::dtor = 0;
     template<> size_t gc_ptr<void>::move = 0;
     template<> size_t gc_ptr<void>::stck = 0;
