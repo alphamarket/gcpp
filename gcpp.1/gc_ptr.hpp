@@ -47,6 +47,9 @@ namespace gc {
             return ss.str();
         }
     protected:
+        /**
+         * check if current ptr is in its move ctor or not
+         */
         bool            has_moved = false;
 #endif
     protected:
@@ -66,6 +69,11 @@ namespace gc {
          * The do not delete flag for stop deletion
          * at the end of contained pointer's life
          */
+        static void dont_delete(void*)
+        { }
+        /**
+         * The gc deleter handles real ref-count ops for pointers
+         */
         template<typename _Tin = T, where
             std::enable_if<
                 std::is_convertible<T, _Tin>::value>::type>
@@ -80,7 +88,7 @@ namespace gc {
                 std::is_convertible<_Tin, T>::value>::type>
         inline gc_ptr(_Tin* p, _Delete d)
             : base(p, d)
-        { assert(*std::get_deleter<deleted_signature(_Tin)>(*this) == d); }
+        { }
         /**
          * @brief event operator
          * @param e the event
@@ -180,8 +188,7 @@ namespace gc {
 #endif
             *this = std::move(gp);
 #ifdef GC_DEBUG
-            assert(this->has_moved);
-            this->has_moved = false;
+            assert(this->has_moved); this->has_moved = false;
 #endif
             _event(EVENT::E_MOVE, this); }
         /**
@@ -190,9 +197,9 @@ namespace gc {
         template<typename _Tin, where
             std::enable_if<
                 std::is_same<T, _Tin>::value>::type>
-        inline gc_ptr(_Tin* p, bool stack_alloced = false)
+        inline gc_ptr(_Tin* p)
             : self(p, self::gc_delete)
-        { this->is_stack = stack_alloced; _event(EVENT::E_CTOR, this); }
+        { _event(EVENT::E_CTOR, this); }
         /**
          * for stack var assignments
          */
@@ -203,8 +210,13 @@ namespace gc {
                 !std::is_pointer<_Tin>::value>::type>   // this cond. made and ~this cond. make in the
                                                         // below assertion to make sure we stop the stack setting:)
         inline gc_ptr(const _Tin& p)
-            : self(const_cast<_Tin*>(std::addressof(p)), self::gc_delete)
-        { _event(EVENT::E_CTOR, this); static_assert(std::is_pointer<_Tin>::value, "cannot assign stack varibales as managed pointers!"); }
+            : self(const_cast<_Tin*>(std::addressof(p)), self::dont_delete)
+        {
+            _event(EVENT::E_CTOR, this);
+#ifdef GC_RESTRICTED
+            static_assert(std::is_pointer<_Tin>::value, "cannot assign stack varibales as managed pointers!");
+#endif
+        }
         /**
          * for base <- derived assignments [only for derived types, does not accept the same type]
          */
@@ -250,14 +262,6 @@ namespace gc {
      * a <void*> gc pointer type
      */
     typedef gc_ptr<void> gc_void_ptr_t;
-    /**
-     * converts a reference pointer to a stack varibale to gc_ptr
-     */
-    template<typename _Tout, typename _Tin, where
-        std::enable_if<
-            std::is_convertible<_Tin, _Tout>::value>::type>
-    inline gc::gc_ptr<_Tout> ref2ptr(_Tin* ref)
-    { return gc::gc_ptr<_Tout>(ref, true); }
 
 #   undef can_static_cast
 #   undef can_dynamic_cast
