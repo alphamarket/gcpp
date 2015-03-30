@@ -305,6 +305,17 @@ namespace gc {
             return *this;
         }
         /**
+         * for access the wrapped pointer's members
+         */
+        inline T* operator->() { return this->get(); }
+        /**
+         * for access the wrapped pointer's members [valid for all except <void*> types]
+         */
+        template<typename _Tout = T, where
+            std::enable_if<
+                !std::is_void<_Tout>::value>::type>
+        inline _Tout& operator* () const { return *this->get(); }
+        /**
          * dynamic cast the containing instance of current ptr to a desired type
          */
         template<typename _Tout> inline gc_ptr<_Tout> as_dynamic_cast() const { return gc_ptr<_Tout>(dynamic_cast<_Tout*>(this->get())); }
