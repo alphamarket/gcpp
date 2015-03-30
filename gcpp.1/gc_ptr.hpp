@@ -69,7 +69,9 @@ namespace gc {
                 c = ++gc_map[p];
             else
                 gc_map.insert({p, (c = 1)});
+#ifdef GC_DEBUG
             cout<<"\033[32m[ref][^] -> "<<c<<"\033[m";
+#endif
             return c;
         }
         /**
@@ -82,7 +84,9 @@ namespace gc {
             assert(gc_map.count(p) && (c = gc_map[p]--) && c--);
             if(c == 0)
                 gc_map.erase(p);
+#ifdef GC_DEBUG
             cout<<"\033[95m[ref][v] -> "<<c<<"\033[m";
+#endif
             return c;
         }
     protected:
@@ -103,7 +107,12 @@ namespace gc {
          * at the end of contained pointer's life
          */
         static void dont_delete(void* p)
-        {   if(!self::ref_down(p)) cout<<"\033[33m(SKIPPED DELETE)\033[m";}
+        {   if(!self::ref_down(p))
+#ifdef GC_DEBUG
+                cout<<"\033[33m(SKIPPED DELETE)\033[m"
+#endif
+                ;
+        }
         /**
          * The gc deleter handles real ref-count ops for pointers
          */
@@ -111,7 +120,9 @@ namespace gc {
         {
             size_t c = self::ref_down(p);
             if(c == 0) {
+#ifdef GC_DEBUG
                 cout<<"\033[31m(DELETE) \033[m";
+#endif
                 _event(EVENT::E_DELETE, p);
                 if(std::is_void<T>::value) free(p);
                 else delete(p);
@@ -170,7 +181,7 @@ namespace gc {
 #ifdef GC_DEBUG
             if(((self*)p)->is_stack)
                 cout<<"\033[33m(ON STACK)\033[m";
-            else if(e == EVENT::E_CTOR && gc_map[wrapped_ptr] == 1)
+            else if(e == EVENT::E_CTOR && gc_map.count(wrapped_ptr) && gc_map[wrapped_ptr] == 1)
                 cout<<"\033[32m(CREATE) \033[m";
             cout<<endl;
 #endif
@@ -276,9 +287,9 @@ namespace gc {
         inline gc_ptr(D* p, bool stack_alloced = false)
             : self(dynamic_cast<B*>(p), self::gc_delete)
         { this->is_stack = stack_alloced; _event(EVENT::E_CTOR, this);
-        #if GC_DEBUG
+#if GC_DEBUG
             cout<<"(DYNA CAST)"<<endl;
-        #endif
+#endif
         }
         /**
          * assignment oprator
