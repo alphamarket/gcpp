@@ -26,19 +26,22 @@
  */
 #   include "gcpp.0/gc.hpp"
 
-#   define gc_new          new(::GC)
-#   define gc_collect()    gc::collect()
+#   define gcnew        new(::GC)
+#   define gccollect()  gc::collect()
 #elif defined(ENABLE_GCPP_V1)
 /**
  * Enable gcpp version 1
  */
 #   include "gcpp.1/gc.hpp"
-
-#   define gc_new           new(::GC())
-#   define gc_collect()
+#   ifdef GC_DEBUG
+#       define gcnew    new(::GC(), cout, __FILE__, __LINE__)
+#   else
+#       define gcnew    new(::GC())
+#   endif
+#   define gccollect()
 #endif
 
-#if !defined(gc_new) || !defined(gc_collect)
+#if !defined(gcnew) || !defined(gccollect)
 #   error "`gc_new` and `gc_collect` both need to be defined by the end of this file."
 #endif
 

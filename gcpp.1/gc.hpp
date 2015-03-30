@@ -6,19 +6,21 @@
 #endif
 
 #include <memory>
+#include <string>
 #include <vector>
+#include <ostream>
 #include <algorithm>
 #include "gcafx.hpp"
 #include "flags.hpp"
 #include "gc_ptr.hpp"
 #include "typedefs.hpp"
 
-void* operator new(size_t s, const ::GC&)
-{
+void* operator new(size_t s, const ::GC&) {
   return ::operator new(s);
 }
-
-namespace gc {
+void* operator new(size_t s, const ::GC&, ostream& o, std::string file, unsigned line) {
+    o<<"[new] "<<file<<": "<<line<<" ";
+    return ::operator new(s);
 }
 
 
