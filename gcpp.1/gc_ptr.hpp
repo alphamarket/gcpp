@@ -13,21 +13,20 @@
 
 #include "gcafx.hpp"
 namespace gc {
-#   define ptoi(p)                              reinterpret_cast<std::intptr_Tin>(p)
-#   define where                                typename = typename
-#   define deleted_signature(_Tin)              void(*)(_Tin*)
-#   define should_cast(BASE, DERIVED)           !std::is_same<BASE, DERIVED>::value && std::is_base_of<BASE, DERIVED>::value
-#   define should_dynamic_cast(BASE, DERIVED)   should_cast(BASE, DERIVED) && std::is_class<BASE>::value
-#   define should_static_cast(BASE, DERIVED)    should_cast(BASE, DERIVED) && std::is_class<BASE>::value
+#   define ptoi(p)                          reinterpret_cast<std::intptr_Tin>(p)
+#   define where                            typename = typename
+#   define deleted_signature(_Tin)          void(*)(_Tin*)
+#   define can_cast(FROM, TO)               std::is_convertible<FROM, TO>::value
+#   define can_dynamic_cast(BASE, DERIVED)  can_cast(DERIVED, BASE) && !std::is_same<BASE, DERIVED>::value && std::is_class<BASE>::value && !std::is_const<DERIVED>::value && std::is_base_of<BASE, DERIVED>::value
+#   define can_static_cast(FROM, TO)        can_cast(FROM, TO)
     using namespace std;
     /**
      * class gc_ptr decl. this class is to manage pointers to objects
      * so it is not logical to accept pointers as input
      */
-    template<typename T = void, where
-        std::enable_if<
-            !std::is_pointer<T>::value>::type>
+    template<typename T>
     class gc_ptr                                                    : public std::shared_ptr<void> {
+        static_assert(!std::is_pointer<T>::value, "cannot accept pointers as type!");
         typedef std::shared_ptr<void>   base;
         typedef gc_ptr                  self;
 #ifdef  GC_DEBUG
@@ -125,13 +124,26 @@ namespace gc {
          }
     public:
         /**
-         * get the internal pointer with a cast
+         * get the wrapped pointer with a static cast
          */
         template<typename _Tout = T, where
             std::enable_if<
-                std::is_convertible<T, _Tout>::value>::type>
+                can_static_cast(T, _Tout)>::type>
         inline _Tout* get() const
         { return static_cast<_Tout*>(base::get()); }
+        /**
+         * get the wrapped pointer with a const cast
+         */
+        template<typename _Tout = T, where
+            std::enable_if<
+                can_static_cast(T, _Tout)>::type>
+        inline const _Tout* get_const() const
+        { return const_cast<const _Tout*>(this->get<_Tout>()); }
+        /**
+         * get the pure wrapped pointer
+         */
+        inline void* get_pure() const
+        { return base::get(); }
         /**
          * the dtor
          */
@@ -192,16 +204,20 @@ namespace gc {
                                                         // below assertion to make sure we stop the stack setting:)
         inline gc_ptr(const _Tin& p)
             : self(const_cast<_Tin*>(std::addressof(p)), self::gc_delete)
-        { _event(EVENT::E_CTOR, this); static_assert(std::is_pointer<_Tin>::value, "Cannot assign stack varibales as managed pointers!"); }
+        { _event(EVENT::E_CTOR, this); static_assert(std::is_pointer<_Tin>::value, "cannot assign stack varibales as managed pointers!"); }
         /**
          * for base <- derived assignments [only for derived types, does not accept the same type]
          */
         template<typename D, typename B = T, where
             std::enable_if<
-                should_dynamic_cast(B, D)>::type>
+                can_dynamic_cast(B, D)>::type>
         inline gc_ptr(D* p, bool stack_alloced = false)
             : self(dynamic_cast<B*>(p), self::gc_delete)
-        { this->is_stack = stack_alloced; _event(EVENT::E_CTOR, this); }
+        { this->is_stack = stack_alloced; _event(EVENT::E_CTOR, this);
+        #if GC_DEBUG
+            cout<<"(DYNA CAST)"<<endl;
+        #endif
+        }
         /**
          * assignment oprator
          */
@@ -215,6 +231,14 @@ namespace gc {
                 *this = self(gp.get<T>());
             return *this;
         }
+        /**
+         * dynamic cast the containing instance of current ptr to a desired type
+         */
+        template<typename _Tout> inline gc_ptr<_Tout> as_dynamic_cast() const { return gc_ptr<_Tout>(dynamic_cast<_Tout*>(this->get())); }
+        /**
+         * static cast the containing instance of current ptr to a desired type
+         */
+        template<typename _Tout> inline gc_ptr<_Tout> as_static_cast() const { return gc_ptr<_Tout>(static_cast<_Tout*>(this->get())); }
     };
 #ifdef GC_DEBUG
     template<> size_t gc_ptr<void>::ctor = 0;
@@ -222,7 +246,10 @@ namespace gc {
     template<> size_t gc_ptr<void>::move = 0;
     template<> size_t gc_ptr<void>::gdel = 0;
 #endif
-    typedef gc_ptr<> gc_ptr_t;
+    /**
+     * a <void*> gc pointer type
+     */
+    typedef gc_ptr<void> gc_void_ptr_t;
     /**
      * converts a reference pointer to a stack varibale to gc_ptr
      */
@@ -232,9 +259,9 @@ namespace gc {
     inline gc::gc_ptr<_Tout> ref2ptr(_Tin* ref)
     { return gc::gc_ptr<_Tout>(ref, true); }
 
-#   undef should_static_cast
-#   undef should_dynamic_cast
-#   undef should_cast
+#   undef can_static_cast
+#   undef can_dynamic_cast
+#   undef can_cast
 #   undef deleted_signature
 #   undef where
 #   undef ptoi
