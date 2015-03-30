@@ -16,12 +16,69 @@
 namespace gc {
 #   define ptoi(p)                          reinterpret_cast<std::intptr_Tin>(p)
 #   define where                            typename = typename
-#   define deleted_signature(_Tin)          void(*)(_Tin*)
+#   define deleter_signature(_Tin)          void(*)(_Tin*)
 #   define can_cast(FROM, TO)               std::is_convertible<FROM, TO>::value
 #   define can_dynamic_cast(BASE, DERIVED)  can_cast(DERIVED, BASE) && !std::is_same<BASE, DERIVED>::value && std::is_class<BASE>::value && !std::is_const<DERIVED>::value && std::is_base_of<BASE, DERIVED>::value
 #   define can_static_cast(FROM, TO)        can_cast(FROM, TO)
-    static unordered_map<void*, size_t> gc_map;
     using namespace std;
+    template<typename T> class gc_ptr;
+    class gc_map {
+        template<typename T> friend class       gc_ptr;
+        typedef unordered_map<void*, size_t>    map_t;
+        /**
+         * The address map container
+         */
+        map_t           _gc_map;
+        /**
+         * The static instance of current class(if it get lost, we lost all the _gc_map)
+         */
+        static gc_map   _instance;
+    protected:
+        /**
+         * ref# up a pointer and return the new ref#
+         */
+        inline static size_t ref_up(void* p) {
+            if(p == nullptr) return 0;
+            size_t c = 0;
+            if(gc_map::instance()._gc_map.count(p))
+                c = ++gc_map::instance()._gc_map[p];
+            else
+                gc_map::instance()._gc_map.insert({p, (c = 1)});
+#ifdef GCPP_DEBUG
+            cout<<"\033[32m[ref][^] -> "<<c<<"\033[m";
+#endif
+            return c;
+        }
+        /**
+         * ref# up a pointer and return the new ref#
+         */
+        inline static size_t ref_down(void* p) {
+            if(p == nullptr) return -1;
+            size_t c = 0;
+            assert(gc_map::instance()._gc_map.count(p) && (c = gc_map::instance()._gc_map[p]--) && c--);
+            if(c == 0)
+                gc_map::instance()._gc_map.erase(p);
+#ifdef GCPP_DEBUG
+            cout<<"\033[95m[ref][v] -> "<<c<<"\033[m";
+#endif
+            return c;
+        }
+        inline static gc_map& instance()    { return gc_map::_instance; }
+        /**
+         * suppress instantization of this class for public
+         */
+        inline explicit gc_map() { }
+    public:
+        /**
+         * get the gc' map instance
+         */
+        inline static const map_t&  get()   { return gc_map::_instance._gc_map; }
+
+    };
+    /**
+     * init the static member of gc_map::_instance
+     */
+    gc_map gc_map::_instance;
     /**
      * class gc_ptr decl. this class is to manage pointers to objects
      * so it is not logical to accept pointers as input
@@ -29,8 +86,9 @@ namespace gc {
     template<typename T>
     class gc_ptr                                                    : public std::shared_ptr<void> {
         static_assert(!std::is_pointer<T>::value, "cannot accept pointers as type!");
-        typedef std::shared_ptr<void>   base;
-        typedef gc_ptr                  self;
+        typedef std::shared_ptr<void>           base;
+        typedef gc_ptr                          self;
+    protected:
 #ifdef  GCPP_DEBUG
     public:
         static size_t ctor;
@@ -40,15 +98,14 @@ namespace gc {
         static size_t stck;
         static size_t gdel;
         static std::string statistical() {
-            typedef gc_ptr<void> gc;
             std::stringstream ss;
             {
-                ss<<"cnew()#   "<<gc::cnew<<endl;
-                ss<<"ctor()#   "<<gc::ctor<<endl;
-                ss<<"move()#   "<<gc::move<<endl;
-                ss<<"dtor()#   "<<gc::dtor<<endl;
-                ss<<"stack()#  "<<gc::stck<<endl;
-                ss<<"delete()# "<<gc::gdel<<endl;
+                ss<<"cnew()#   "<<_static::cnew<<endl;
+                ss<<"ctor()#   "<<_static::ctor<<endl;
+                ss<<"move()#   "<<_static::move<<endl;
+                ss<<"dtor()#   "<<_static::dtor<<endl;
+                ss<<"stack()#  "<<_static::stck<<endl;
+                ss<<"delete()# "<<_static::gdel<<endl;
                 ss<<endl<<"------- INFO -------"<<endl<<endl;
                 ss<<"cnew() == delete()"<<endl;
             }
@@ -60,37 +117,6 @@ namespace gc {
          */
         bool            has_moved = false;
 #endif
-        /**
-         * ref# up a pointer and return the new ref#
-         */
-        template<typename _Tin = T>
-        inline static size_t ref_up(_Tin* p) {
-            if(p == nullptr) return 0;
-            size_t c = 0;
-            if(gc_map.count(p))
-                c = ++gc_map[p];
-            else
-                gc_map.insert({p, (c = 1)});
-#ifdef GCPP_DEBUG
-            cout<<"\033[32m[ref][^] -> "<<c<<"\033[m";
-#endif
-            return c;
-        }
-        /**
-         * ref# up a pointer and return the new ref#
-         */
-        template<typename _Tin = T>
-        inline static size_t ref_down(_Tin* p) {
-            if(p == nullptr) return -1;
-            size_t c = 0;
-            assert(gc_map.count(p) && (c = gc_map[p]--) && c--);
-            if(c == 0)
-                gc_map.erase(p);
-#ifdef GCPP_DEBUG
-            cout<<"\033[95m[ref][v] -> "<<c<<"\033[m";
-#endif
-            return c;
-        }
     protected:
         /**
          * is curren instance located in stack mem.
@@ -119,7 +145,7 @@ namespace gc {
          */
         static void gc_delete(T* p)
         {
-            size_t c = self::ref_down(p);
+            size_t c = gc_map::ref_down(p);
             if(c == 0) {
 #ifdef GCPP_DEBUG
                 gc_ptr<void>::gdel++;
@@ -155,7 +181,7 @@ namespace gc {
                     cout<<"\033[32m[CTOR: "<<((self*)p)->get_pure()<<"] \033[m";
 #endif
                     if(!((self*)p)->is_stack)
-                        self::ref_up(((self*)p)->get_pure());
+                        gc_map::ref_up(((self*)p)->get_pure());
                     break;
                 case EVENT::E_DTOR:
 #ifdef GCPP_DEBUG
@@ -188,37 +214,16 @@ namespace gc {
          }
     public:
         /**
-         * get the wrapped pointer with a static cast
-         */
-        template<typename _Tout = T, where
-            std::enable_if<
-                can_static_cast(T, _Tout)>::type>
-        inline _Tout* get() const
-        { return static_cast<_Tout*>(base::get()); }
-        /**
-         * get the wrapped pointer with a const cast
-         */
-        template<typename _Tout = T, where
-            std::enable_if<
-                can_static_cast(T, _Tout)>::type>
-        inline const _Tout* get_const() const
-        { return const_cast<const _Tout*>(this->get<_Tout>()); }
-        /**
-         * get the pure wrapped pointer
-         */
-        inline void* get_pure() const
-        { return base::get(); }
-        /**
-         * the dtor
-         */
-        inline ~gc_ptr()
-        { _event(EVENT::E_DTOR, this); }
-        /**
          * for empty ptr
          */
         inline gc_ptr()
             : self(static_cast<T*>(nullptr), self::dont_delete)
         { _event(EVENT::E_CTOR, this); }
+        /**
+         * the dtor
+         */
+        inline ~gc_ptr()
+        { _event(EVENT::E_DTOR, this); }
         /**
          * for copy assignments [ only for convertable data types ]
          */
@@ -297,12 +302,55 @@ namespace gc {
             std::enable_if<
                 std::is_convertible<_Tin, T>::value>::type>
         inline self& operator =(const gc_ptr<_Tin>& gp) {
-            if(auto del_p = std::get_deleter<deleted_signature(T)>(gp))
+            if(auto del_p = std::get_deleter<deleter_signature(T)>(gp))
                 *this = self(gp.get<T>(), *del_p);
             else
                 *this = self(gp.get<T>());
             return *this;
         }
+        /**
+         * get the wrapped pointer with a static cast
+         */
+        template<typename _Tout = T, where
+            std::enable_if<
+                can_static_cast(T, _Tout)>::type>
+        inline _Tout* get() const
+        { return static_cast<_Tout*>(base::get()); }
+        /**
+         * get the wrapped pointer with a const cast
+         */
+        template<typename _Tout = T, where
+            std::enable_if<
+                can_static_cast(T, _Tout)>::type>
+        inline const _Tout* get_const() const
+        { return const_cast<const _Tout*>(this->get<_Tout>()); }
+        /**
+         * dynamic cast the containing instance of current ptr to a desired type
+         */
+        template<typename _Tout> inline gc_ptr<_Tout> as_dynamic_cast() const { return gc_ptr<_Tout>(dynamic_cast<_Tout*>(this->get())); }
+        /**
+         * static cast the containing instance of current ptr to a desired type
+         */
+        template<typename _Tout> inline gc_ptr<_Tout> as_static_cast() const { return gc_ptr<_Tout>(static_cast<_Tout*>(this->get())); }
+        /**
+         * get use_count of current instance
+         */
+        size_t use_count() const {
+            // if not registered in map
+            if(!gc_map::get().count(this->get_pure())) {
+                // this should be a `dont_delete` pointer type
+                assert(*std::get_deleter<deleter_signature(void)>(*this) == self::dont_delete);
+                // just consider the base's count as it is
+                return base::use_count();
+            } else
+                // return the actual reference#
+                return gc_map::get().at(this->get_pure());
+        }
+        /**
+         * get the pure wrapped pointer
+         */
+        inline void* get_pure() const
+        { return base::get(); }
         /**
          * for access the wrapped pointer's members
          */
@@ -314,14 +362,6 @@ namespace gc {
             std::enable_if<
                 !std::is_void<_Tout>::value>::type>
         inline _Tout& operator* () const { return *this->get(); }
-        /**
-         * dynamic cast the containing instance of current ptr to a desired type
-         */
-        template<typename _Tout> inline gc_ptr<_Tout> as_dynamic_cast() const { return gc_ptr<_Tout>(dynamic_cast<_Tout*>(this->get())); }
-        /**
-         * static cast the containing instance of current ptr to a desired type
-         */
-        template<typename _Tout> inline gc_ptr<_Tout> as_static_cast() const { return gc_ptr<_Tout>(static_cast<_Tout*>(this->get())); }
     };
 #ifdef GCPP_DEBUG
     template<> size_t gc_ptr<void>::ctor = 0;
