@@ -34,6 +34,7 @@ namespace gc {
         static size_t ctor;
         static size_t dtor;
         static size_t move;
+        static size_t stck;
         static size_t gdel;
         static std::string statistical() {
             typedef gc_ptr<void> gc;
@@ -42,7 +43,10 @@ namespace gc {
                 ss<<"ctor()#   "<<gc::ctor<<endl;
                 ss<<"move()#   "<<gc::move<<endl;
                 ss<<"dtor()#   "<<gc::dtor<<endl;
+                ss<<"stack()#  "<<gc::stck<<endl;
                 ss<<"delete()# "<<gc::gdel<<endl;
+                ss<<endl<<"------- INFO -------"<<endl<<endl;
+                ss<<"ctor() = stack() + delete()"<<endl;
             }
             return ss.str();
         }
@@ -207,11 +211,15 @@ namespace gc {
             std::enable_if<
                 !std::is_same<_Tin, self>::value &&
                 std::is_convertible<_Tin, T>::value &&
-                !std::is_pointer<_Tin>::value>::type>   // this cond. made and ~this cond. make in the
+                !std::is_pointer<_Tin>::value>::type>   // in restricted mode: this cond. made and ~this cond. make in the
                                                         // below assertion to make sure we stop the stack setting:)
         inline gc_ptr(const _Tin& p)
             : self(const_cast<_Tin*>(std::addressof(p)), self::dont_delete)
         {
+            this->is_stack = true;
+#ifdef GC_DEBUG
+            gc_ptr<void>::stck++;
+#endif
             _event(EVENT::E_CTOR, this);
 #ifdef GC_RESTRICTED
             static_assert(std::is_pointer<_Tin>::value, "cannot assign stack varibales as managed pointers!");
@@ -256,6 +264,7 @@ namespace gc {
     template<> size_t gc_ptr<void>::ctor = 0;
     template<> size_t gc_ptr<void>::dtor = 0;
     template<> size_t gc_ptr<void>::move = 0;
+    template<> size_t gc_ptr<void>::stck = 0;
     template<> size_t gc_ptr<void>::gdel = 0;
 #endif
     /**
