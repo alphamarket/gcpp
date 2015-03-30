@@ -6,6 +6,7 @@ TEMPLATE = app
 TARGET = gcpp
 INCLUDEPATH += . gcpp.0 test test/hpp test/TestCases
 CONFIG += c++11
+DEFINES += GC_DEBUG
 
 # Input
 HEADERS += gcpp.hpp \

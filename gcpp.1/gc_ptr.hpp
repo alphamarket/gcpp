@@ -6,6 +6,11 @@
 #include <algorithm>
 #include <stdexcept>
 #include <unordered_map>
+
+#ifdef GC_DEBUG
+#   include <sstream>
+#endif
+
 #include "gcafx.hpp"
 namespace gc {
 #   define ptoi(p)                              reinterpret_cast<std::intptr_Tin>(p)
@@ -19,13 +24,36 @@ namespace gc {
      * class gc_ptr decl. this class is to manage pointers to objects
      * so it is not logical to accept pointers as input
      */
-    template<typename T, where
+    template<typename T = void, where
         std::enable_if<
             !std::is_pointer<T>::value>::type>
     class gc_ptr                                                    : public std::shared_ptr<void> {
         typedef std::shared_ptr<void>   base;
         typedef gc_ptr                  self;
+#ifdef  GC_DEBUG
+    public:
+        static size_t ctor;
+        static size_t dtor;
+        static size_t move;
+        static size_t gdel;
+        static std::string statistical() {
+            typedef gc_ptr<void> gc;
+            std::stringstream ss;
+            {
+                ss<<"ctor()#   "<<gc::ctor<<endl;
+                ss<<"move()#   "<<gc::move<<endl;
+                ss<<"dtor()#   "<<gc::dtor<<endl;
+                ss<<"delete()# "<<gc::gdel<<endl;
+            }
+            return ss.str();
+        }
     protected:
+        bool            has_moved = false;
+#endif
+    protected:
+        /**
+         * is curren instance located in stack mem.
+         */
         bool            is_stack = false;
         /**
          * the containing data
@@ -42,7 +70,7 @@ namespace gc {
         template<typename _Tin = T, where
             std::enable_if<
                 std::is_convertible<T, _Tin>::value>::type>
-        static void dont_delete(T* p)
+        static void gc_delete(T* p)
         { _event(EVENT::E_DELETE, p); }
         /**
          * for general pointer delete constructor [ The return sorce of other ctor ]
@@ -62,23 +90,38 @@ namespace gc {
         static void _event(EVENT e, __unused const void* const p = nullptr) {
             switch(e) {
                 case EVENT::E_CTOR:
+#ifdef GC_DEBUG
+                    gc_ptr<void>::ctor++;
                     cout<<"[CTOR: "<<((self*)p)->get()<<"]";
+#endif
                     break;
                 case EVENT::E_DTOR:
+#ifdef GC_DEBUG
+                    if(((self*)p)->has_moved) return;
+                    gc_ptr<void>::dtor++;
                     cout<<"[DTOR: "<<((self*)p)->get()<<"]";
+#endif
                     break;
                 case EVENT::E_MOVE:
+#ifdef GC_DEBUG
+                    gc_ptr<void>::move++;
                     cout<<"[MOVE: "<<((self*)p)->get()<<"]";
+#endif
                     break;
                 case EVENT::E_DELETE:
-                    cout<<"[DELX: "<<p<<"]"<<endl;
+#ifdef GC_DEBUG
+                    gc_ptr<void>::gdel++;
+                    cout<<"[GDEL: "<<p<<"]"<<endl;
+#endif
                     return;
                 default:
                     throw std::invalid_argument("Invalid event passed!");
             }
+#ifdef GC_DEBUG
             if(((self*)p)->is_stack)
                 cout<<"(ON STACK)";
             cout<<endl;
+#endif
          }
     public:
         /**
@@ -98,7 +141,7 @@ namespace gc {
          * for empty ptr
          */
         inline gc_ptr()
-            : self(static_cast<T*>(nullptr), self::dont_delete)
+            : self(static_cast<T*>(nullptr), self::gc_delete)
         { _event(EVENT::E_CTOR, this); }
         /**
          * for copy assignments [ only for convertable data types ]
@@ -114,8 +157,21 @@ namespace gc {
         template<typename _Tin, where
             std::enable_if<
                 std::is_convertible<_Tin, T>::value>::type>
-        inline gc_ptr(const gc_ptr<_Tin>&& gp)
-        {  *this = std::move(gp); _event(EVENT::E_MOVE, this); }
+        inline gc_ptr(
+#ifndef GC_DEBUG
+            const
+#endif
+            gc::gc_ptr<_Tin>&& gp)
+        {
+#ifdef GC_DEBUG
+            gp.has_moved =  true;
+#endif
+            *this = std::move(gp);
+#ifdef GC_DEBUG
+            assert(this->has_moved);
+            this->has_moved = false;
+#endif
+            _event(EVENT::E_MOVE, this); }
         /**
          * for general pointer assignment [only on no<-conversion types between the class' T and the input _Tin]
          */
@@ -123,7 +179,7 @@ namespace gc {
             std::enable_if<
                 std::is_same<T, _Tin>::value>::type>
         inline gc_ptr(_Tin* p, bool stack_alloced = false)
-            : self(p, self::dont_delete)
+            : self(p, self::gc_delete)
         { this->is_stack = stack_alloced; _event(EVENT::E_CTOR, this); }
         /**
          * for stack var assignments
@@ -135,7 +191,7 @@ namespace gc {
                 !std::is_pointer<_Tin>::value>::type>   // this cond. made and ~this cond. make in the
                                                         // below assertion to make sure we stop the stack setting:)
         inline gc_ptr(const _Tin& p)
-            : self(const_cast<_Tin*>(std::addressof(p)), self::dont_delete)
+            : self(const_cast<_Tin*>(std::addressof(p)), self::gc_delete)
         { _event(EVENT::E_CTOR, this); static_assert(std::is_pointer<_Tin>::value, "Cannot assign stack varibales as managed pointers!"); }
         /**
          * for base <- derived assignments [only for derived types, does not accept the same type]
@@ -144,7 +200,7 @@ namespace gc {
             std::enable_if<
                 should_dynamic_cast(B, D)>::type>
         inline gc_ptr(D* p, bool stack_alloced = false)
-            : self(dynamic_cast<B*>(p), self::dont_delete)
+            : self(dynamic_cast<B*>(p), self::gc_delete)
         { this->is_stack = stack_alloced; _event(EVENT::E_CTOR, this); }
         /**
          * assignment oprator
@@ -160,6 +216,13 @@ namespace gc {
             return *this;
         }
     };
+#ifdef GC_DEBUG
+    template<> size_t gc_ptr<void>::ctor = 0;
+    template<> size_t gc_ptr<void>::dtor = 0;
+    template<> size_t gc_ptr<void>::move = 0;
+    template<> size_t gc_ptr<void>::gdel = 0;
+#endif
+    typedef gc_ptr<> gc_ptr_t;
     /**
      * converts a reference pointer to a stack varibale to gc_ptr
      */
