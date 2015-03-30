@@ -112,7 +112,7 @@ namespace gc {
         {
             if(!self::ref_down(p))
 #ifdef GCPP_DEBUG
-                cout<<"\033[33m(SKIPPED DELETE)\033[m";
+                cout<<"\033[33m(SKIPPED DELETE)\033[m"<<endl;
 #endif
                 { }
         }
@@ -125,8 +125,8 @@ namespace gc {
             if(c == 0) {
 #ifdef GCPP_DEBUG
                 gc_ptr<void>::gdel++;
-                cout<<"\033[95m[GDEL: "<<p<<"]\033[m"<<endl;
-                cout<<"\033[31m(DELETE) \033[m";
+                cout<<"\033[95m[GDEL: "<<p<<"]\033[m";
+                cout<<"\033[31m(DELETE) \033[m"<<endl;
 #endif
                 _event(EVENT::E_DELETE, p);
                 if(std::is_void<T>::value) free(p);
@@ -147,9 +147,7 @@ namespace gc {
             : base(p, d)
         { }
         /**
-         * @brief event operator
-         * @param e the event
-         * @param p
+         * event operator
          */
         static void _event(EVENT e, __unused const void* const p = nullptr) {
 #define     wrapped_ptr ((self*)p)->get_pure()
