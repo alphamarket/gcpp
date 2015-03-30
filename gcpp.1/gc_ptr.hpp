@@ -14,13 +14,14 @@
 
 #include "gcafx.hpp"
 namespace gc {
-#   define ptoi(p)                          reinterpret_cast<std::intptr_Tin>(p)
-#   define where                            typename = typename
-#   define deleter_signature(_Tin)          void(*)(_Tin*)
-#   define _get_deleter(_Tin, gp)           std::get_deleter<deleter_signature(_Tin)>(gp)
-#   define can_cast(FROM, TO)               std::is_convertible<FROM, TO>::value
-#   define can_dynamic_cast(BASE, DERIVED)  can_cast(DERIVED, BASE) && !std::is_same<BASE, DERIVED>::value && std::is_class<BASE>::value && !std::is_const<DERIVED>::value && std::is_base_of<BASE, DERIVED>::value
-#   define can_static_cast(FROM, TO)        can_cast(FROM, TO)
+#   define ptoi(p)                      reinterpret_cast<std::intptr_t>(p)
+#   define where                        typename = typename
+#   define deleter_signature(_Tin)      void(*)(_Tin*)
+#   define _get_deleter(_Tin, gp)       std::get_deleter<deleter_signature(_Tin)>(gp)
+#   define can_cast(FROM, TO)           std::is_convertible<FROM, TO>::value
+#   define can_cast_ptr(FROM, TO)       std::is_convertible<FROM*, TO*>::value
+#   define can_dynamic_cast(FROM, TO)   can_cast(FROM, TO) && !std::is_same<FROM, TO>::value && std::is_class<TO>::value && !std::is_const<FROM>::value && std::is_base_of<TO, FROM>::value
+#   define can_static_cast(FROM, TO)    can_cast(FROM, TO)
     using namespace std;
     template<typename T> class gc_ptr;
     class gc_map {
@@ -80,6 +81,10 @@ namespace gc {
      * init the static member of gc_map::_instance
      */
     gc_map gc_map::_instance;
+    struct _cast {};
+    struct _dynamic_cast : _cast {};
+    struct _static_cast  : _cast {};
+
     /**
      * class gc_ptr decl. this class is to manage pointers to objects
      * so it is not logical to accept pointers as input
@@ -168,7 +173,7 @@ namespace gc {
         template<typename _Tin, typename _Delete, where
             std::enable_if<
                 std::is_pointer<_Delete>::value &&
-                std::is_convertible<_Tin, T>::value>::type>
+                can_cast_ptr(_Tin, T)>::type>
         inline gc_ptr(_Tin* p, _Delete d)
             : base(p, d)
         { }
@@ -214,6 +219,20 @@ namespace gc {
 #endif
 #undef      wrapped_ptr
         }
+        template<typename _Tout, /*typename _Cast, */typename _Tin, where
+            std::enable_if<
+    //            !std::is_same<_Cast, gc::_cast>::value &&
+    //            std::is_base_of<gc::_cast, _Cast>::value &&
+                std::is_convertible<_Tin, _Tout>::value>::type>
+        gc_ptr<_Tout>& gc_cast(const gc_ptr<_Tin>& gp) {
+            gc_ptr<_Tout> o;
+            if(can_dynamic_cast(_Tin, _Tout))
+                o = gc_ptr<_Tout>(dynamic_cast<_Tout>(*gp));
+            if(can_static_cast(_Tin, _Tout))
+                o = gc_ptr<_Tout>(static_cast<_Tout>(*gp));
+            o.is_stack = gp.is_stack;
+            throw bad_cast();
+        }
     public:
         inline bool marked_as_stack() const { return this->is_stack; }
         /**
@@ -232,7 +251,7 @@ namespace gc {
          */
         template<typename _Tin, where
             std::enable_if<
-                std::is_convertible<_Tin, T>::value>::type>
+                can_cast_ptr(_Tin, T)>::type>
         inline gc_ptr(const gc_ptr<_Tin>& gp)
         { this->operator =(gp); _event(EVENT::E_CTOR, this); }
         /**
@@ -240,7 +259,7 @@ namespace gc {
          */
         template<typename _Tin, where
             std::enable_if<
-                std::is_convertible<_Tin, T>::value>::type>
+                can_cast_ptr(_Tin, T)>::type>
         inline gc_ptr(
 #ifndef GCPP_DEBUG
             const
@@ -260,7 +279,7 @@ namespace gc {
          */
         template<typename _Tin, where
             std::enable_if<
-                std::is_convertible<_Tin*, T*>::value>::type>
+                can_cast_ptr(_Tin, T)>::type>
         inline gc_ptr(_Tin* p)
             : self(static_cast<T*>(p), self::gc_delete)
         { _event(EVENT::E_CTOR, this); }
@@ -270,7 +289,7 @@ namespace gc {
         template<typename _Tin, where
             std::enable_if<
                 !std::is_same<_Tin, self>::value &&
-                std::is_convertible<_Tin, T>::value &&
+                can_cast_ptr(_Tin, T) &&
                 !std::is_pointer<_Tin>::value>::type>   // in restricted mode: this cond. made and ~this cond. make in the
                                                         // below assertion to make sure we stop the stack setting:)
         inline gc_ptr(const _Tin& p)
@@ -307,13 +326,9 @@ namespace gc {
          */
         template<typename _Tin, where
             std::enable_if<
-                std::is_convertible<_Tin, T>::value>::type>
+                can_cast_ptr(_Tin, T)>::type>
         inline gc_ptr<T>& operator =(const gc_ptr<_Tin>& gp) {
-            if(auto del_p = _get_deleter(_Tin, gp))
-                base::reset(gp.get<T>(), *del_p);
-            else
-                base::reset(gp.get<T>());
-            this->is_stack = gp.marked_as_stack();
+            *this = std::copy(gp);
             return *this;
         }
         /**
