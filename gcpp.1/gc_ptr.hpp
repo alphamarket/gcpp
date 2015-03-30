@@ -108,13 +108,11 @@ namespace gc {
          * The do not delete flag for stop deletion
          * at the end of contained pointer's life
          */
-        static void dont_delete(void* p)
+        static void dont_delete(void*)
         {
-            if(!self::ref_down(p))
 #ifdef GCPP_DEBUG
-                cout<<"\033[33m(SKIPPED DELETE)\033[m"<<endl;
+            cout<<"\033[33m(SKIPPED DELETE)\033[m"<<endl;
 #endif
-                { }
         }
         /**
          * The gc deleter handles real ref-count ops for pointers
@@ -150,14 +148,14 @@ namespace gc {
          * event operator
          */
         static void _event(EVENT e, __unused const void* const p = nullptr) {
-#define     wrapped_ptr ((self*)p)->get_pure()
             switch(e) {
                 case EVENT::E_CTOR:
 #ifdef GCPP_DEBUG
                     gc_ptr<void>::ctor++;
-                    cout<<"\033[32m[CTOR: "<<wrapped_ptr<<"] \033[m";
+                    cout<<"\033[32m[CTOR: "<<((self*)p)->get_pure()<<"] \033[m";
 #endif
-                    self::ref_up(wrapped_ptr);
+                    if(!((self*)p)->is_stack)
+                        self::ref_up(((self*)p)->get_pure());
                     break;
                 case EVENT::E_DTOR:
 #ifdef GCPP_DEBUG

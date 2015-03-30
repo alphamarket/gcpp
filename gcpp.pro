@@ -19,7 +19,8 @@ HEADERS += gcpp.hpp \
            test/hpp/registery.hpp \
            test/hpp/testCase.hpp \
            test/hpp/teststrap.hpp \
-           test/TestCases/cppgcTestCaser.hpp \
     gcpp.1/gcafx.hpp \
-    gcpp.1/gc_ptr.hpp
+    gcpp.1/gc_ptr.hpp \
+    test/TestCases/gcppStub.hpp \
+    test/TestCases/gcppTestCaser.hpp
 SOURCES += gcpp.0/gcpp.cpp test/testerMain.cpp
