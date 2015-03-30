@@ -1,6 +1,7 @@
 #ifndef HDR__GC_PTR_HPP
 #define HDR__GC_PTR_HPP
 #include <memory>
+#include <cstdlib>
 #include <iostream>
 #include <assert.h>
 #include <algorithm>
@@ -19,6 +20,7 @@ namespace gc {
 #   define can_cast(FROM, TO)               std::is_convertible<FROM, TO>::value
 #   define can_dynamic_cast(BASE, DERIVED)  can_cast(DERIVED, BASE) && !std::is_same<BASE, DERIVED>::value && std::is_class<BASE>::value && !std::is_const<DERIVED>::value && std::is_base_of<BASE, DERIVED>::value
 #   define can_static_cast(FROM, TO)        can_cast(FROM, TO)
+    static unordered_map<void*, size_t> gc_map;
     using namespace std;
     /**
      * class gc_ptr decl. this class is to manage pointers to objects
@@ -46,7 +48,7 @@ namespace gc {
                 ss<<"stack()#  "<<gc::stck<<endl;
                 ss<<"delete()# "<<gc::gdel<<endl;
                 ss<<endl<<"------- INFO -------"<<endl<<endl;
-                ss<<"ctor() = stack() + delete()"<<endl;
+                ss<<"ctor() = stack() + delete() = dtor()"<<endl;
             }
             return ss.str();
         }
@@ -56,6 +58,33 @@ namespace gc {
          */
         bool            has_moved = false;
 #endif
+        /**
+         * ref# up a pointer and return the new ref#
+         */
+        template<typename _Tin = T>
+        inline static size_t ref_up(_Tin* p) {
+            if(p == nullptr) return 0;
+            size_t c = 0;
+            if(gc_map.count(p))
+                c = ++gc_map[p];
+            else
+                gc_map.insert({p, (c = 1)});
+            cout<<"\033[32m[ref][^] -> "<<c<<"\033[m";
+            return c;
+        }
+        /**
+         * ref# up a pointer and return the new ref#
+         */
+        template<typename _Tin = T>
+        inline static size_t ref_down(_Tin* p) {
+            if(p == nullptr) return -1;
+            size_t c = 0;
+            assert(gc_map.count(p) && (c = gc_map[p]--) && c--);
+            if(c == 0)
+                gc_map.erase(p);
+            cout<<"\033[95m[ref][v] -> "<<c<<"\033[m";
+            return c;
+        }
     protected:
         /**
          * is curren instance located in stack mem.
@@ -73,16 +102,24 @@ namespace gc {
          * The do not delete flag for stop deletion
          * at the end of contained pointer's life
          */
-        static void dont_delete(void*)
-        { }
+        static void dont_delete(void* p)
+        {   if(!self::ref_down(p)) cout<<"\033[33m(SKIPPED DELETE)\033[m";}
         /**
          * The gc deleter handles real ref-count ops for pointers
          */
-        template<typename _Tin = T, where
-            std::enable_if<
-                std::is_convertible<T, _Tin>::value>::type>
         static void gc_delete(T* p)
-        { _event(EVENT::E_DELETE, p); }
+        {
+            size_t c = self::ref_down(p);
+            if(c == 0) {
+                cout<<"\033[31m(DELETE) \033[m";
+                _event(EVENT::E_DELETE, p);
+                if(std::is_void<T>::value) free(p);
+                else delete(p);
+                p = NULL;
+                return;
+            }
+            _event(EVENT::E_DELETE, p);
+        }
         /**
          * for general pointer delete constructor [ The return sorce of other ctor ]
          */
@@ -99,12 +136,14 @@ namespace gc {
          * @param p
          */
         static void _event(EVENT e, __unused const void* const p = nullptr) {
+#define     wrapped_ptr ((self*)p)->get_pure()
             switch(e) {
                 case EVENT::E_CTOR:
 #ifdef GC_DEBUG
                     gc_ptr<void>::ctor++;
-                    cout<<"[CTOR: "<<((self*)p)->get()<<"]";
+                    cout<<"\033[32m[CTOR: "<<wrapped_ptr<<"] \033[m";
 #endif
+                    self::ref_up(wrapped_ptr);
                     break;
                 case EVENT::E_DTOR:
 #ifdef GC_DEBUG
@@ -122,7 +161,7 @@ namespace gc {
                 case EVENT::E_DELETE:
 #ifdef GC_DEBUG
                     gc_ptr<void>::gdel++;
-                    cout<<"[GDEL: "<<p<<"]"<<endl;
+                    cout<<"\033[95m[GDEL: "<<p<<"]\033[m"<<endl;
 #endif
                     return;
                 default:
@@ -130,9 +169,12 @@ namespace gc {
             }
 #ifdef GC_DEBUG
             if(((self*)p)->is_stack)
-                cout<<"(ON STACK)";
+                cout<<"\033[33m(ON STACK)\033[m";
+            else if(e == EVENT::E_CTOR && gc_map[wrapped_ptr] == 1)
+                cout<<"\033[32m(CREATE) \033[m";
             cout<<endl;
 #endif
+#undef      wrapped_ptr
          }
     public:
         /**
@@ -165,7 +207,7 @@ namespace gc {
          * for empty ptr
          */
         inline gc_ptr()
-            : self(static_cast<T*>(nullptr), self::gc_delete)
+            : self(static_cast<T*>(nullptr), self::dont_delete)
         { _event(EVENT::E_CTOR, this); }
         /**
          * for copy assignments [ only for convertable data types ]
@@ -200,9 +242,9 @@ namespace gc {
          */
         template<typename _Tin, where
             std::enable_if<
-                std::is_same<T, _Tin>::value>::type>
+                std::is_convertible<_Tin*, T*>::value>::type>
         inline gc_ptr(_Tin* p)
-            : self(p, self::gc_delete)
+            : self(static_cast<T*>(p), self::gc_delete)
         { _event(EVENT::E_CTOR, this); }
         /**
          * for stack var assignments
