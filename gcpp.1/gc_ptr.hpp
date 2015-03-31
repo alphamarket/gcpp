@@ -87,12 +87,25 @@ namespace gc {
      * so it is not logical to accept pointers as input
      */
     template<typename T>
-    class gc_ptr                                                    : public std::shared_ptr<void> {
+    class gc_ptr                                                    : protected std::shared_ptr<void> {
         static_assert(!std::is_pointer<T>::value, "cannot accept pointers as type!");
         typedef std::shared_ptr<void>           base;
         typedef gc_ptr                          self;
         typedef gc_ptr<void>                    _static;
         typedef void (*deleter_signature)(T*);
+    public:
+#ifdef GCPP_DISABLE_HEAP_ALLOC
+        /**
+         * disallow heap allocation for gc_ptr
+         * its is here to manage memory, if we give the client to allocate gc_ptr
+         * on heap, it may cause mem. losses on gc_ptr own allocated memory
+         * if the user was not careful, not the wrapped ptr.
+         */
+        void * operator new       (size_t) = delete;
+        void * operator new[]     (size_t) = delete;
+        void   operator delete    (void *) = delete;
+        void   operator delete[]  (void *) = delete;
+#endif
     protected:
 #ifdef  GCPP_DEBUG
     public:
@@ -325,6 +338,12 @@ namespace gc {
             cout<<"(DYNA CAST)"<<endl;
 #endif
         }
+        /**
+         * disposes the wrapped ptr
+         * @note based on how many gc_ptr referes to wrapped ptr it may or may not free(delete) the
+         * wrapped ptr.
+         */
+        void dispose() { this->reset(); }
         /**
          * assignment oprator
          */
