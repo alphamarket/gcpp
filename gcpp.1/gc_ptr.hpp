@@ -14,10 +14,7 @@
 
 #include "gcafx.hpp"
 namespace gc {
-#   define ptoi(p)                      reinterpret_cast<std::intptr_t>(p)
 #   define where                        typename = typename
-#   define deleter_signature(_Tin)      void(*)(_Tin*)
-#   define _get_deleter(_Tin, gp)       std::get_deleter<deleter_signature(_Tin)>(gp)
 #   define can_cast(FROM, TO)           std::is_convertible<FROM, TO>::value
 #   define can_cast_ptr(FROM, TO)       std::is_convertible<FROM*, TO*>::value
 #   define can_dynamic_cast(FROM, TO)   can_cast(FROM, TO) && !std::is_same<FROM, TO>::value && std::is_class<TO>::value && !std::is_const<FROM>::value && std::is_base_of<TO, FROM>::value
@@ -95,6 +92,7 @@ namespace gc {
         typedef std::shared_ptr<void>           base;
         typedef gc_ptr                          self;
         typedef gc_ptr<void>                    _static;
+        typedef void (*deleter_signature)(T*);
     protected:
 #ifdef  GCPP_DEBUG
     public:
@@ -141,7 +139,7 @@ namespace gc {
          * The do not delete flag for stop deletion
          * at the end of contained pointer's life
          */
-        static void dont_delete(void*)
+        static void dont_delete(T*)
         {
 #ifdef GCPP_DEBUG
             cout<<"\033[33m(SKIPPED DELETE)\033[m"<<endl;
@@ -219,22 +217,20 @@ namespace gc {
 #endif
 #undef      wrapped_ptr
         }
-        template<typename _Tout, /*typename _Cast, */typename _Tin, where
-            std::enable_if<
-    //            !std::is_same<_Cast, gc::_cast>::value &&
-    //            std::is_base_of<gc::_cast, _Cast>::value &&
-                std::is_convertible<_Tin, _Tout>::value>::type>
-        gc_ptr<_Tout>& gc_cast(const gc_ptr<_Tin>& gp) {
-            gc_ptr<_Tout> o;
-            if(can_dynamic_cast(_Tin, _Tout))
-                o = gc_ptr<_Tout>(dynamic_cast<_Tout>(*gp));
-            if(can_static_cast(_Tin, _Tout))
-                o = gc_ptr<_Tout>(static_cast<_Tout>(*gp));
-            o.is_stack = gp.is_stack;
-            throw bad_cast();
+        /**
+         * get proper deleter based on input arg's allocation status
+         */
+        template<typename _Tin>
+        inline deleter_signature gc_get_deleter(const gc_ptr<_Tin>& gp) {
+            if(gp.stack_referred())
+                return self::dont_delete;
+            return self::gc_delete;
         }
     public:
-        inline bool marked_as_stack() const { return this->is_stack; }
+        /**
+         * check if the pointer refers to location on stack memory
+         */
+        inline bool stack_referred() const { return this->is_stack; }
         /**
          * for empty ptr
          */
@@ -253,7 +249,15 @@ namespace gc {
             std::enable_if<
                 can_cast_ptr(_Tin, T)>::type>
         inline gc_ptr(const gc_ptr<_Tin>& gp)
-        { this->operator =(gp); _event(EVENT::E_CTOR, this); }
+        {
+            if(can_dynamic_cast(_Tin, T))
+                this->reset(dynamic_cast<T*>(gp.get()), this->gc_get_deleter(gp));
+            else if(can_static_cast(_Tin, T))
+                this->reset(static_cast<T*>(gp.get()), this->gc_get_deleter(gp));
+            else throw bad_cast();
+            this->is_stack = gp.stack_referred();
+            _event(EVENT::E_CTOR, this);
+        }
         /**
          * for move assignments [ only for convertable data types ]
          */
@@ -293,7 +297,7 @@ namespace gc {
                 !std::is_pointer<_Tin>::value>::type>   // in restricted mode: this cond. made and ~this cond. make in the
                                                         // below assertion to make sure we stop the stack setting:)
         inline gc_ptr(const _Tin& p)
-            : self(const_cast<_Tin*>(std::addressof(p)), self::dont_delete)
+            : self(const_cast<_Tin*>(std::addressof((T&)p)), self::dont_delete)
         {
             // this is an stack memory
             this->is_stack = true;
@@ -328,7 +332,7 @@ namespace gc {
             std::enable_if<
                 can_cast_ptr(_Tin, T)>::type>
         inline gc_ptr<T>& operator =(const gc_ptr<_Tin>& gp) {
-            *this = std::copy(gp);
+            *this = self(gp);
             return *this;
         }
         /**
@@ -362,7 +366,7 @@ namespace gc {
             // if not registered in map
             if(!gc_map::get().count(this->get_pure())) {
                 // this should be a `dont_delete` pointer type
-                assert(*_get_deleter(void, *this) == self::dont_delete);
+                assert(this->stack_referred());
                 // just consider the base's count as it is
                 return base::use_count();
             } else
@@ -408,6 +412,5 @@ namespace gc {
 #   undef can_cast
 #   undef deleted_signature
 #   undef where
-#   undef ptoi
 }
 #endif // HDR__GC_PTR_HPP
