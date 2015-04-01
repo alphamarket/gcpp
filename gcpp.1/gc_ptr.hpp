@@ -45,7 +45,7 @@ namespace gc {
          * ref# up a pointer and return the new ref#
          */
         inline static size_t ref_down(const gc_id_t& p) {
-            if(p == 0 || !gc_map::instance()._gc_map.count(p)) return 0;
+            if(p == 0 || !gc_map::instance()._gc_map.count(p)) return -1;
             size_t c = --gc_map::instance()._gc_map[p];
             if(c == 0)
                 gc_map::instance()._gc_map.erase(p);
@@ -78,10 +78,10 @@ namespace gc {
             gc_id_t register_id,
             bool is_stack = true,
             bool disposed = false)
-            :   _data(data),
-                _register_id(register_id),
+            :   _disposed(disposed),
+                _data(data),
                 _is_stack(is_stack),
-                _disposed(disposed) { }
+                _register_id(register_id) { }
         inline T* get_data() const { return this->_data; }
         inline bool stack_referred() const { return this->_is_stack; }
         inline gc_id_t get_id() const { return this->_register_id; }
@@ -93,17 +93,17 @@ namespace gc {
         gc_id_t _register_id =  NOT_REGISTERED;
     };
 
-    /**
-     * class gc_ptr decl. this class is to manage pointers to objects
-     * so it is not logical to accept pointers as input
-     */
     template<typename T>
     class gc_ptr: protected std::shared_ptr<detail<T>> {
+        /**
+         * class gc_ptr decl. this class is to manage pointers to objects
+         * so it is not logical to accept pointers as input
+         */
         static_assert(!std::is_pointer<T>::value, "cannot accept pointers as type!");
         typedef std::shared_ptr<gc_ptr<T>>      base;
         typedef gc_ptr                          self;
         typedef gc_ptr<void>                    _static;
-        typedef void (*deleter)(const detail<T>*);
+        typedef void (*deleter)(detail<T>*);
     public:
 #ifdef GCPP_DISABLE_HEAP_ALLOC
         /**
@@ -119,6 +119,11 @@ namespace gc {
 #endif
     protected:
         /**
+         * check if current instance has disposed
+         */
+        bool            _disposed = false;
+
+        /**
          * The possible events enum
          */
         enum class      EVENT { E_CTOR, E_DTOR, E_MOVE, E_DELETE };
@@ -126,16 +131,19 @@ namespace gc {
          * The do not delete flag for stop deletion
          * at the end of contained pointer's life
          */
-        static void dont_delete(const detail<T>*) { /* do nothing */ }
+        static void dont_delete(detail<T>* d) { delete d; }
         /**
          * The gc deleter handles real ref-count ops for pointers
          */
-        static void gc_delete(const detail<T>* p)
+        static void gc_delete(detail<T>* d)
         {
-            if(p->has_disposed()) return;
+            if(d->has_disposed()) return;
             invoke_event(EVENT::E_DELETE);
-            if(!gc_map::ref_down(p->get_id()))
-                delete p->get_data();
+            if(!gc_map::ref_down(d->get_id())) {
+                cout<<"~0x"<<d->get_id()<<endl;
+                delete d->get_data();
+                delete d;
+            }
         }
         /**
          * event operator
@@ -173,8 +181,9 @@ namespace gc {
             std::enable_if<
                 std::is_pointer<_Delete>::value>::type>
         inline gc_ptr(T* data, gc_id_t reg_id, _Delete d, bool is_stack = false)
-            : base(new detail<T>(data, reg_id, is_stack, false), d)
-        { }
+        {
+            this->reset(new detail<T>(data, reg_id, is_stack, false), d);
+        }
     public:
         /**
          * for empty ptr
@@ -238,9 +247,9 @@ namespace gc {
          * wrapped ptr.
          */
         void dispose() {
-            if(std::shared_ptr<detail<T>>::get()->has_disposed()) return;
+            if(this->_disposed) return;
             this->reset();
-            std::shared_ptr<detail<T>>::get()->make_disposed();
+            this->_disposed = true;
         }
         /**
          * check if current instance has been disposed
@@ -252,7 +261,7 @@ namespace gc {
         template<typename _Tin, where
             std::enable_if<
                 can_cast_ptr(_Tin, T)>::type>
-        inline gc_ptr<T>& operator =(const gc_ptr<_Tin>& gp) { *this = self(gp); return *this; }
+        inline gc_ptr<T>& operator =(const gc_ptr<_Tin>& gp) { this->dispose(); *this = self(gp); return *this; }
         /**
          * get the wrapped pointer with a static cast
          */
