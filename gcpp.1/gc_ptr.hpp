@@ -235,19 +235,8 @@ namespace gc {
          */
         void dispose() {
             if(this->_disposed) return;
-            /*
-             * this is manuly planted here because in absent of it
-             * if current instance is the last instance standing in
-             * base's ref counting, then it does some ops. on the shared
-             * ptr which is `this` and its value will change in `deleter` function
-             * and every thing will be messed up.
-             * so we call the deleter manualy and flag the disposal flag which will be check
-             * if `gc_deleter` get called, and it won't go throw disposal ops. again.
-             * and at the end everyone is happy :)
-             */
-            this->gc_get_deleter(*this)(this);
-            this->_disposed = true;
             this->reset();
+            this->_disposed = true;
         }
         bool has_disposed() const { return this->_disposed; }
         /**
