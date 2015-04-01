@@ -16,10 +16,10 @@ namespace gc {
 #   define can_cast_ptr(FROM, TO)                       std::is_convertible<FROM*, TO*>::value
     using namespace std;
     template<typename T>                                class gc_ptr;
-    typedef intptr_t                                    gc_intptr_t;
+    typedef intptr_t                                    gc_id_t;
     class gc_map {
         template<typename T> friend class               gc_ptr;
-        typedef unordered_map<gc_intptr_t, size_t>      map_t;
+        typedef unordered_map<gc_id_t, size_t>      map_t;
         /**
          * The address map container
          */
@@ -32,7 +32,7 @@ namespace gc {
         /**
          * ref# up a pointer and return the new ref#
          */
-        inline static size_t ref_up(const gc_intptr_t& p) {
+        inline static size_t ref_up(const gc_id_t& p) {
             if(p == 0) return 0;
             size_t c = 0;
             if(gc_map::instance()._gc_map.count(p))
@@ -44,7 +44,7 @@ namespace gc {
         /**
          * ref# up a pointer and return the new ref#
          */
-        inline static size_t ref_down(const gc_intptr_t& p) {
+        inline static size_t ref_down(const gc_id_t& p) {
             if(p == 0 || !gc_map::instance()._gc_map.count(p)) return 0;
             size_t c = --gc_map::instance()._gc_map[p];
             if(c == 0)
@@ -67,21 +67,43 @@ namespace gc {
      * init the static member of gc_map::_instance
      */
     gc_map gc_map::_instance;
-    struct _cast {};
-    struct _dynamic_cast : _cast {};
-    struct _static_cast  : _cast {};
+    template<typename T>
+    struct detail {
+        static const
+        gc_id_t NOT_REGISTERED = 0;
+        bool _disposed =  false;
+        T type;
+        detail(
+            T* data,
+            gc_id_t register_id,
+            bool is_stack = true,
+            bool disposed = false)
+            :   _data(data),
+                _register_id(register_id),
+                _is_stack(is_stack),
+                _disposed(disposed) { }
+        inline T* get_data() const { return this->_data; }
+        inline bool stack_referred() const { return this->_is_stack; }
+        inline gc_id_t get_id() const { return this->_register_id; }
+        inline bool has_disposed() const { return this->_disposed; }
+        inline void make_disposed(bool check = true) { this->_disposed = check; }
+    private:
+        T* _data = nullptr;
+        bool _is_stack = false;
+        gc_id_t _register_id =  NOT_REGISTERED;
+    };
 
     /**
      * class gc_ptr decl. this class is to manage pointers to objects
      * so it is not logical to accept pointers as input
      */
     template<typename T>
-    class gc_ptr                                                    : protected std::shared_ptr<gc_ptr<T>> {
+    class gc_ptr: protected std::shared_ptr<detail<T>> {
         static_assert(!std::is_pointer<T>::value, "cannot accept pointers as type!");
         typedef std::shared_ptr<gc_ptr<T>>      base;
         typedef gc_ptr                          self;
         typedef gc_ptr<void>                    _static;
-        typedef void (*deleter)(const self*);
+        typedef void (*deleter)(const detail<T>*);
     public:
 #ifdef GCPP_DISABLE_HEAP_ALLOC
         /**
@@ -96,24 +118,6 @@ namespace gc {
         void   operator delete[]  (void *) = delete;
 #endif
     protected:
-        static const
-        gc_intptr_t     NOT_REGISTERED = 0;
-        /**
-         * is curren instance located in stack mem.
-         */
-        bool            _is_stack = false;
-        /**
-         * the containing data
-         */
-        T*              _data = nullptr;
-        /**
-         * the id which current value has registered
-         */
-        gc::gc_intptr_t _register_id  = self::NOT_REGISTERED;
-        /**
-         * check if current instance has disposed
-         */
-        bool            _disposed = false;
         /**
          * The possible events enum
          */
@@ -122,16 +126,16 @@ namespace gc {
          * The do not delete flag for stop deletion
          * at the end of contained pointer's life
          */
-        static void dont_delete(const self*) { /* do nothing */ }
+        static void dont_delete(const detail<T>*) { /* do nothing */ }
         /**
          * The gc deleter handles real ref-count ops for pointers
          */
-        static void gc_delete(const self* p)
+        static void gc_delete(const detail<T>* p)
         {
             if(p->has_disposed()) return;
             invoke_event(EVENT::E_DELETE);
             if(!gc_map::ref_down(p->get_id()))
-                delete p->get();
+                delete p->get_data();
         }
         /**
          * event operator
@@ -139,7 +143,7 @@ namespace gc {
         static void invoke_event(EVENT e, const self* const p = nullptr) {
             switch(e) {
                 case EVENT::E_CTOR:
-                    if(!p->_is_stack)
+                    if(!p->stack_referred())
                         gc_map::ref_up(p->get_id());
                     break;
                 case EVENT::E_DTOR:     break;
@@ -161,22 +165,22 @@ namespace gc {
          * get the registration id of input pointer
          */
         template<typename _Tin>
-        inline gc_intptr_t get_id(_Tin* p) const { return reinterpret_cast<gc_intptr_t>(p); }
+        inline gc_id_t get_id(_Tin* p) const { return reinterpret_cast<gc_id_t>(p); }
         /**
          * for general pointer delete constructor [ The return sorce of other ctor ]
          */
         template<typename _Delete, where
             std::enable_if<
                 std::is_pointer<_Delete>::value>::type>
-        inline gc_ptr(T* data, gc_intptr_t reg_id, _Delete d, bool is_stack = false)
-            : base(this, d), _is_stack(is_stack), _data(data), _register_id(reg_id)
+        inline gc_ptr(T* data, gc_id_t reg_id, _Delete d, bool is_stack = false)
+            : base(new detail<T>(data, reg_id, is_stack, false), d)
         { }
     public:
         /**
          * for empty ptr
          */
         inline gc_ptr()
-            : self(nullptr, self::NOT_REGISTERED, self::dont_delete, true)
+            : self(nullptr, detail<T>::NOT_REGISTERED, self::dont_delete, true)
         /* everything is already init to their defualts */
         { self::invoke_event(EVENT::E_CTOR, this); }
         /**
@@ -234,9 +238,9 @@ namespace gc {
          * wrapped ptr.
          */
         void dispose() {
-            if(this->_disposed) return;
+            if(std::shared_ptr<detail<T>>::get()->has_disposed()) return;
             this->reset();
-            this->_disposed = true;
+            std::shared_ptr<detail<T>>::get()->make_disposed();
         }
         /**
          * check if current instance has been disposed
@@ -253,7 +257,7 @@ namespace gc {
          * get the wrapped pointer with a static cast
          */
         inline T* get() const
-        { return this->_data; }
+        { return std::shared_ptr<detail<T>>::get()->get_data(); }
         /**
          * get the wrapped pointer with a const cast
          */
@@ -268,20 +272,20 @@ namespace gc {
                 // this should be a `dont_delete` pointer type
                 assert(this->stack_referred());
                 // just consider the base's count as it is
-                return base::use_count();
+                return std::shared_ptr<detail<T>>::use_count();
             } else
                 // return the actual reference#
                 return gc_map::get().at(this->get_id());
         }
         /**
-         * get the registration id for the wrapped ptr
-         */
-        inline gc_intptr_t get_id() const
-        { return this->_register_id; }
-        /**
          * check if the pointer refers to location on stack memory
          */
-        inline bool stack_referred() const { return this->_is_stack; }
+        inline bool stack_referred() const { return std::shared_ptr<detail<T>>::get()->stack_referred(); }
+        /**
+         * get the registration id for the wrapped ptr
+         */
+        inline gc_id_t get_id() const
+        { return std::shared_ptr<detail<T>>::get()->get_id(); }
         /**
          * for access the wrapped pointer's members
          */
