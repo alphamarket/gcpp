@@ -152,31 +152,14 @@ namespace gc {
          * The do not delete flag for stop deletion
          * at the end of contained pointer's life
          */
-        static void dont_delete(T*)
-        {
-#ifdef GCPP_DEBUG
-            cout<<"\033[33m(SKIPPED DELETE)\033[m"<<endl;
-#endif
-        }
+        static void dont_delete(T*) { }
         /**
          * The gc deleter handles real ref-count ops for pointers
          */
         static void gc_delete(T* p)
         {
-            size_t c = gc_map::ref_down(p);
-            if(c == 0) {
-#ifdef GCPP_DEBUG
-                gc_ptr<void>::gdel++;
-                cout<<"\033[95m[GDEL: "<<p<<"]\033[m";
-                cout<<"\033[31m(DELETE) \033[m"<<endl;
-#endif
-                _event(EVENT::E_DELETE, p);
-                if(std::is_void<T>::value) free(p);
-                else delete(p);
-                p = NULL;
-                return;
-            }
-            _event(EVENT::E_DELETE, p);
+            _event(EVENT::E_DELETE);
+            if(!gc_map::ref_down(p)) delete(p);
         }
         /**
          * for general pointer delete constructor [ The return sorce of other ctor ]
@@ -191,44 +174,17 @@ namespace gc {
         /**
          * event operator
          */
-        static void _event(EVENT e, __unused const void* const p = nullptr) {
+        static void _event(EVENT e, const self* const p = nullptr) {
             switch(e) {
                 case EVENT::E_CTOR:
-#ifdef GCPP_DEBUG
-                    gc_ptr<void>::ctor++;
-                    cout<<"\033[32m[CTOR: "<<((self*)p)->get_pure()<<"] \033[m";
-#endif
-                    if(!((self*)p)->is_stack)
-                        gc_map::ref_up(((self*)p)->get_pure());
+                    if(!p->is_stack)
+                        gc_map::ref_up(p->get_pure());
                     break;
-                case EVENT::E_DTOR:
-#ifdef GCPP_DEBUG
-                    if(((self*)p)->has_moved) return;
-                    gc_ptr<void>::dtor++;
-                    cout<<"[DTOR: "<<((self*)p)->get()<<"]";
-#endif
-                    break;
-                case EVENT::E_MOVE:
-#ifdef GCPP_DEBUG
-                    gc_ptr<void>::move++;
-                    cout<<"[MOVE: "<<((self*)p)->get()<<"]";
-#endif
-                    break;
-                case EVENT::E_DELETE:
-#ifdef GCPP_DEBUG
-#endif
-                    return;
-                default:
-                    throw std::invalid_argument("Invalid event passed!");
+                case EVENT::E_DTOR:     break;
+                case EVENT::E_MOVE:     break;
+                case EVENT::E_DELETE:   break;
+                default: throw std::invalid_argument("Invalid event passed!");
             }
-#ifdef GCPP_DEBUG
-            if(((self*)p)->is_stack)
-                cout<<"\033[33m(ON STACK)\033[m";
-            else if(e == EVENT::E_CTOR && gc_map::get().count(((self*)p)->get_pure()) && gc_map::get().at(((self*)p)->get_pure()) == 1 && ++gc_ptr<void>::cnew)
-                cout<<"\033[32m(CREATE) \033[m";
-            cout<<endl;
-#endif
-#undef      wrapped_ptr
         }
         /**
          * get proper deleter based on input arg's allocation status
