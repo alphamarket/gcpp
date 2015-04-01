@@ -47,7 +47,7 @@ namespace gc {
          * ref# up a pointer and return the new ref#
          */
         inline static size_t ref_down(const gc_intptr_t& p) {
-            if(p == 0 || !gc_map::instance()._gc_map.count(p)) return -1;
+            if(p == 0 || !gc_map::instance()._gc_map.count(p)) return 0;
             size_t c = --gc_map::instance()._gc_map[p];
             if(c == 0)
                 gc_map::instance()._gc_map.erase(p);
@@ -80,7 +80,7 @@ namespace gc {
     template<typename T>
     class gc_ptr                                                    : protected std::shared_ptr<gc_ptr<T>> {
         static_assert(!std::is_pointer<T>::value, "cannot accept pointers as type!");
-        typedef std::shared_ptr<gc_ptr<T>>           base;
+        typedef std::shared_ptr<gc_ptr<T>>      base;
         typedef gc_ptr                          self;
         typedef gc_ptr<void>                    _static;
         typedef void (*deleter)(const self*);
