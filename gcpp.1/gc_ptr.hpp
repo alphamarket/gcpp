@@ -11,17 +11,15 @@
 #include "gcafx.hpp"
 #include "gc_cast.hpp"
 namespace gc {
-#   define where                        typename = typename
-#   define can_cast(FROM, TO)           std::is_convertible<FROM, TO>::value
-#   define can_cast_ptr(FROM, TO)       std::is_convertible<FROM*, TO*>::value
-#   define can_dynamic_cast(FROM, TO)   can_cast(FROM, TO) && !std::is_same<FROM, TO>::value && std::is_class<TO>::value && !std::is_const<FROM>::value && std::is_base_of<TO, FROM>::value
-#   define can_static_cast(FROM, TO)    can_cast(FROM, TO)
+#   define where                                        typename = typename
+#   define can_cast(FROM, TO)                           std::is_convertible<FROM, TO>::value
+#   define can_cast_ptr(FROM, TO)                       std::is_convertible<FROM*, TO*>::value
     using namespace std;
-    template<typename T> class gc_ptr;
-    typedef intptr_t                            gc_intptr_t;
+    template<typename T>                                class gc_ptr;
+    typedef intptr_t                                    gc_intptr_t;
     class gc_map {
-        template<typename T> friend class       gc_ptr;
-        typedef unordered_map<gc_intptr_t, size_t>    map_t;
+        template<typename T> friend class               gc_ptr;
+        typedef unordered_map<gc_intptr_t, size_t>      map_t;
         /**
          * The address map container
          */
@@ -98,8 +96,8 @@ namespace gc {
         void   operator delete[]  (void *) = delete;
 #endif
     protected:
-        static
-        const gc_intptr_t NOT_REGISTERED = 0;
+        static const
+        gc_intptr_t     NOT_REGISTERED = 0;
         /**
          * is curren instance located in stack mem.
          */
@@ -115,7 +113,7 @@ namespace gc {
         /**
          * check if current instance has disposed
          */
-        bool _disposed = false;
+        bool            _disposed = false;
         /**
          * The possible events enum
          */
@@ -124,7 +122,7 @@ namespace gc {
          * The do not delete flag for stop deletion
          * at the end of contained pointer's life
          */
-        static void dont_delete(const self*) { }
+        static void dont_delete(const self*) { /* do nothing */ }
         /**
          * The gc deleter handles real ref-count ops for pointers
          */
@@ -159,6 +157,9 @@ namespace gc {
                 return self::dont_delete;
             return self::gc_delete;
         }
+        /**
+         * get the registration id of input pointer
+         */
         template<typename _Tin>
         inline gc_intptr_t get_id(_Tin* p) const { return reinterpret_cast<gc_intptr_t>(p); }
         /**
@@ -182,8 +183,7 @@ namespace gc {
          * the dtor
          */
         inline ~gc_ptr()
-        /* the deleter will invoked from event invoker */
-        { }
+        { /* the deleter functions will take care of it automatically */ }
         /**
          * for normal convertable heap assignments
          */
@@ -221,7 +221,7 @@ namespace gc {
                 gp.stack_referred())
         { self::invoke_event(EVENT::E_CTOR, this);  }
         /**
-         * for move assignments [ only for convertable data types ]
+         * move ctor
          */
         template<typename _Tin, where
             std::enable_if<
@@ -238,6 +238,9 @@ namespace gc {
             this->reset();
             this->_disposed = true;
         }
+        /**
+         * check if current instance has been disposed
+         */
         bool has_disposed() const { return this->_disposed; }
         /**
          * assignment oprator
@@ -245,10 +248,7 @@ namespace gc {
         template<typename _Tin, where
             std::enable_if<
                 can_cast_ptr(_Tin, T)>::type>
-        inline gc_ptr<T>& operator =(const gc_ptr<_Tin>& gp) {
-            *this = self(gp);
-            return *this;
-        }
+        inline gc_ptr<T>& operator =(const gc_ptr<_Tin>& gp) { *this = self(gp); return *this; }
         /**
          * get the wrapped pointer with a static cast
          */
@@ -268,13 +268,13 @@ namespace gc {
                 // this should be a `dont_delete` pointer type
                 assert(this->stack_referred());
                 // just consider the base's count as it is
-                return 1;//base::use_count();
+                return base::use_count();
             } else
                 // return the actual reference#
                 return gc_map::get().at(this->get_id());
         }
         /**
-         * get the reg id
+         * get the registration id for the wrapped ptr
          */
         inline gc_intptr_t get_id() const
         { return this->_register_id; }
@@ -287,28 +287,13 @@ namespace gc {
          */
         inline T* operator->() { return this->get(); }
         /**
-         * for access the wrapped pointer's members [valid for all except <void*> types]
+         * for access the wrapped pointer's members
          */
         inline T& operator* () const { return *(this->get()); }
         inline T& operator* () { return *(this->get()); }
     };
-#ifdef GCPP_DEBUG
-    template<> size_t gc_ptr<void>::ctor = 0;
-    template<> size_t gc_ptr<void>::cnew = 0;
-    template<> size_t gc_ptr<void>::dtor = 0;
-    template<> size_t gc_ptr<void>::move = 0;
-    template<> size_t gc_ptr<void>::stck = 0;
-    template<> size_t gc_ptr<void>::gdel = 0;
-#endif
-    /**
-     * a <void*> gc pointer type
-     */
-    typedef gc_ptr<void> gc_void_ptr_t;
-
-#   undef can_static_cast
-#   undef can_dynamic_cast
-#   undef can_cast
-#   undef deleted_signature
-#   undef where
+#undef can_cast_ptr
+#undef can_cast
+#undef where
 }
 #endif // HDR__GC_PTR_HPP
