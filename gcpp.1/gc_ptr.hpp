@@ -83,7 +83,7 @@ namespace gc {
         typedef std::shared_ptr<gc_ptr<T>>           base;
         typedef gc_ptr                          self;
         typedef gc_ptr<void>                    _static;
-        typedef void (*deleter)(self*);
+        typedef void (*deleter)(const self*);
     public:
 #ifdef GCPP_DISABLE_HEAP_ALLOC
         /**
@@ -124,11 +124,11 @@ namespace gc {
          * The do not delete flag for stop deletion
          * at the end of contained pointer's life
          */
-        static void dont_delete(self*) { }
+        static void dont_delete(const self*) { }
         /**
          * The gc deleter handles real ref-count ops for pointers
          */
-        static void gc_delete(self* p)
+        static void gc_delete(const self* p)
         {
             if(p->has_disposed()) return;
             invoke_event(EVENT::E_DELETE);
@@ -235,7 +235,17 @@ namespace gc {
          */
         void dispose() {
             if(this->_disposed) return;
-            self::gc_delete(this);
+            /*
+             * this is manuly planted here because in absent of it
+             * if current instance is the last instance standing in
+             * base's ref counting, then it does some ops. on the shared
+             * ptr which is `this` and its value will change in `deleter` function
+             * and every thing will be messed up.
+             * so we call the deleter manualy and flag the disposal flag which will be check
+             * if `gc_deleter` get called, and it won't go throw disposal ops. again.
+             * and at the end everyone is happy :)
+             */
+            this->gc_get_deleter(*this)(this);
             this->_disposed = true;
             this->reset();
         }
