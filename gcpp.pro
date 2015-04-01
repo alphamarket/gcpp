@@ -22,5 +22,6 @@ HEADERS += gcpp.hpp \
     gcpp.1/gcafx.hpp \
     gcpp.1/gc_ptr.hpp \
     test/TestCases/gcppStub.hpp \
-    test/TestCases/gcppTestCaser.hpp
+    test/TestCases/gcppTestCaser.hpp \
+    gcpp.1/gc_cast.hpp
 SOURCES += gcpp.0/gcpp.cpp test/testerMain.cpp
