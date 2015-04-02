@@ -5,16 +5,14 @@ namespace gc {
     struct gc_detail {
         static const
         gc_id_t NOT_REGISTERED = 0;
-        bool _disposed =  false;
-        T type;
         gc_detail(
             T* data,
             gc_id_t register_id,
             bool is_stack = true,
             bool disposed = false)
-            :   _disposed(disposed),
-                _data(data),
+            :   _data(data),
                 _is_stack(is_stack),
+                _disposed(disposed),
                 _register_id(register_id) { }
         inline T* get_data() const { return this->_data; }
         inline bool stack_referred() const { return this->_is_stack; }
@@ -24,6 +22,7 @@ namespace gc {
     private:
         T* _data = nullptr;
         bool _is_stack = false;
+        bool _disposed =  false;
         gc_id_t _register_id =  NOT_REGISTERED;
     };
 }
