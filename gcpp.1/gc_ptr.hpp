@@ -2,6 +2,7 @@
 #define HDR__GC_PTR_HPP
 #include <memory>
 #include <cstdlib>
+#include <malloc.h>
 #include <iostream>
 #include <assert.h>
 #include <algorithm>
@@ -68,9 +69,23 @@ namespace gc {
         static void gc_delete(gc_detail<T>* d)
         {
             invoke_event(EVENT::E_DELETE);
+            // if the use case came down to zero?
             if(!gc_map::ref_down(d->get_id()))
-            { delete d->get_data(), delete d; }
+            // free the memory
+            { gc_delete_helper(d); }
         }
+        /**
+         * helpers to use in `gc_delete()`
+         */
+        template<typename _Tin, where
+            std::enable_if<
+                !std::is_void<_Tin>::value>::type>
+        static void gc_delete_helper (gc_detail<_Tin>*& d)
+        // free non-void data types
+        { delete d->get_data(), delete d; }
+        static void gc_delete_helper (gc_detail<void>*& d)
+        // free     void data types
+        { free(d->get_data()), delete d; }
         /**
          * event operator
          */
@@ -224,8 +239,11 @@ namespace gc {
         /**
          * for access the wrapped pointer's members
          */
-        inline T& operator* () const { return *(this->get()); }
-        inline T& operator* () { return *(this->get()); }
+
+        inline typename std::add_lvalue_reference<T>::type
+        operator* () const { return *(this->get()); }
+        inline typename std::add_lvalue_reference<T>::type
+        operator* () { return *(this->get()); }
     };
 #undef gc_smart_virtual_destructor_check
 #undef can_cast_ptr
