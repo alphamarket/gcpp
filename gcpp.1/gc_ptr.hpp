@@ -178,10 +178,7 @@ namespace gc {
             std::enable_if<
                 can_cast_ptr(_Tin, T)>::type>
         inline gc_ptr(const gc_ptr<_Tin>&& gp)
-        {
-            gc_smart_virtual_destructor_check(T, _Tin);
-            *this = std::move(gp);
-        }
+        { gc_smart_virtual_destructor_check(T, _Tin); *this = std::move(gp); }
         /**
          * disposes the wrapped ptr
          * @note based on how many gc_ptr referes to wrapped ptr it may or may not free(delete) the
@@ -203,7 +200,7 @@ namespace gc {
          * get the wrapped pointer with a static cast
          */
         inline T* get() const
-        { return std::shared_ptr<gc_detail<T>>::get()->get_data(); }
+        { return this->_disposed ? nullptr : std::shared_ptr<gc_detail<T>>::get()->get_data(); }
         /**
          * get the wrapped pointer with a const cast
          */
@@ -239,9 +236,10 @@ namespace gc {
         /**
          * for access the wrapped pointer's members
          */
-
+        // Allow class instantiation when T is [cv-qual] void.
         inline typename std::add_lvalue_reference<T>::type
         operator* () const { return *(this->get()); }
+        // Allow class instantiation when T is [cv-qual] void.
         inline typename std::add_lvalue_reference<T>::type
         operator* () { return *(this->get()); }
     };
