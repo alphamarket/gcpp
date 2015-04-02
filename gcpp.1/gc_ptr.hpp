@@ -140,7 +140,6 @@ namespace gc {
             if(d->has_disposed()) return;
             invoke_event(EVENT::E_DELETE);
             if(!gc_map::ref_down(d->get_id())) {
-                cout<<"~0x"<<d->get_id()<<endl;
                 delete d->get_data();
                 delete d;
             }
@@ -205,7 +204,15 @@ namespace gc {
                 can_cast_ptr(_Tin, T)>::type>
         inline gc_ptr(_Tin* in)
             : self(gc_cast<T*>(in), this->get_id(in), self::gc_delete, false)
-        { self::invoke_event(EVENT::E_CTOR, this); }
+
+        {
+            static_assert(
+                !std::is_compound<typename base_type<T>::type>::value ||
+                std::is_same<typename base_type<T>::type, typename base_type<_Tin>::type>::value ||
+                (std::is_base_of<typename base_type<T>::type, typename base_type<_Tin>::type>::value &&
+                std::has_virtual_destructor<typename base_type<T>::type>::value), "the <T> has to have virtual destructor!!");
+            self::invoke_event(EVENT::E_CTOR, this);
+        }
         /**
          * for reference stack vars. assignments
          */
@@ -261,7 +268,7 @@ namespace gc {
         template<typename _Tin, where
             std::enable_if<
                 can_cast_ptr(_Tin, T)>::type>
-        inline gc_ptr<T>& operator =(const gc_ptr<_Tin>& gp) { this->dispose(); *this = self(gp); return *this; }
+        inline gc_ptr<T>& operator =(const gc_ptr<_Tin>& gp) { *this = self(gp); return *this; }
         /**
          * get the wrapped pointer with a static cast
          */
