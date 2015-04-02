@@ -30,7 +30,7 @@ namespace gc {
          */
         T* operator[](size_t index) const
         {
-            if(index >= this->_array.size())
+            if(index >= this->size())
                 throw std::out_of_range("index out of range");
             return std::vector<gc::gc_ptr<T>>::operator[](index).get();
         }

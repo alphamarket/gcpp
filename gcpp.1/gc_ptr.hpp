@@ -193,13 +193,6 @@ namespace gc {
          */
         bool has_disposed() const { return this->_disposed; }
         /**
-         * assignment oprator
-         */
-        template<typename _Tin, where
-            std::enable_if<
-                can_cast_ptr(_Tin, T)>::type>
-        inline gc_ptr<T>& operator =(const gc_ptr<_Tin>& gp) { *this = self(gp); return *this; }
-        /**
          * get the wrapped pointer with a static cast
          */
         inline T* get() const
@@ -236,6 +229,13 @@ namespace gc {
          * for access the wrapped pointer's members
          */
         inline T* operator->() { return this->get(); }
+        /**
+         * assignment oprator
+         */
+        template<typename _Tin, where
+            std::enable_if<
+                can_cast_ptr(_Tin, T)>::type>
+        inline gc_ptr<T>& operator =(const gc_ptr<_Tin>& gp) { *this = self(gp); return *this; }
         /**
          * for access the wrapped pointer's members
          */
