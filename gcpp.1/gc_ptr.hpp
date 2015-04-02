@@ -32,11 +32,12 @@ namespace gc {
          * so it is not logical to accept pointers as input
          */
         static_assert(!std::is_pointer<T>::value, "cannot accept pointers as type!");
-        typedef std::shared_ptr<gc_ptr<T>>      base;
+        typedef std::shared_ptr<gc_detail<T>>   base;
         typedef gc_ptr                          self;
         typedef void (*deleter)(gc_detail<T>*);
+        template<typename> friend class gc_array_ptr;
     public:
-#ifdef GCPP_DISABLE_HEAP_ALLOC
+#ifndef GCPP_ENABLE_HEAP_ALLOC
         /**
          * disallow heap allocation for gc_ptr
          * its is here to manage memory, if we give the client to allocate gc_ptr
@@ -47,6 +48,8 @@ namespace gc {
         void * operator new[]     (size_t) = delete;
         void   operator delete    (void *) = delete;
         void   operator delete[]  (void *) = delete;
+#else
+#       warning "heap allocations are enabled for `gc_ptr<>` define `GCPP_ENABLE_HEAP_ALLOC` to disable this constraint."
 #endif
     protected:
         /**
@@ -200,7 +203,7 @@ namespace gc {
          * get the wrapped pointer with a static cast
          */
         inline T* get() const
-        { return this->_disposed ? nullptr : std::shared_ptr<gc_detail<T>>::get()->get_data(); }
+        { return this->_disposed ? nullptr : base::get()->get_data(); }
         /**
          * get the wrapped pointer with a const cast
          */
@@ -215,7 +218,7 @@ namespace gc {
                 // this should be a `dont_delete` pointer type
                 assert(this->stack_referred());
                 // just consider the base's count as it is
-                return std::shared_ptr<gc_detail<T>>::use_count();
+                return base::use_count();
             } else
                 // return the actual reference#
                 return gc_map::get().at(this->get_id());
@@ -223,12 +226,12 @@ namespace gc {
         /**
          * check if the pointer refers to location on stack memory
          */
-        inline bool stack_referred() const { return std::shared_ptr<gc_detail<T>>::get()->stack_referred(); }
+        inline bool stack_referred() const { return base::get()->stack_referred(); }
         /**
          * get the registration id for the wrapped ptr
          */
         inline gc_id_t get_id() const
-        { return std::shared_ptr<gc_detail<T>>::get()->get_id(); }
+        { return base::get()->get_id(); }
         /**
          * for access the wrapped pointer's members
          */
