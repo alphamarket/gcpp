@@ -25,5 +25,6 @@ HEADERS += gcpp.hpp \
     test/TestCases/gcppTestCaser.hpp \
     gcpp.1/gc_cast.hpp \
     gcpp.1/gc_map.hpp \
-    gcpp.1/gc_detail.hpp
+    gcpp.1/gc_detail.hpp \
+    gcpp.1/gc_array_ptr.hpp
 SOURCES += gcpp.0/gcpp.cpp test/testerMain.cpp

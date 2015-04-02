@@ -12,6 +12,7 @@
 #include <algorithm>
 #include "gcafx.hpp"
 #include "gc_ptr.hpp"
+#include "gc_array_ptr.hpp"
 
 namespace gc {
     namespace flags {
