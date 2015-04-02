@@ -226,7 +226,14 @@ namespace gc {
                 this->get_id(std::addressof(in)),
                 self::dont_delete,
                 true)
-        { self::invoke_event(EVENT::E_CTOR, this); }
+        {
+            static_assert(
+                !std::is_compound<typename base_type<T>::type>::value ||
+                std::is_same<typename base_type<T>::type, typename base_type<_Tin>::type>::value ||
+                (std::is_base_of<typename base_type<T>::type, typename base_type<_Tin>::type>::value &&
+                std::has_virtual_destructor<typename base_type<T>::type>::value), "the <T> has to have virtual destructor!!");
+            self::invoke_event(EVENT::E_CTOR, this);
+        }
         /**
          * copy ctor
          */
@@ -239,7 +246,14 @@ namespace gc {
                 gp.get_id(),
                 this->gc_get_deleter(gp),
                 gp.stack_referred())
-        { self::invoke_event(EVENT::E_CTOR, this);  }
+        {
+            static_assert(
+                !std::is_compound<typename base_type<T>::type>::value ||
+                std::is_same<typename base_type<T>::type, typename base_type<_Tin>::type>::value ||
+                (std::is_base_of<typename base_type<T>::type, typename base_type<_Tin>::type>::value &&
+                std::has_virtual_destructor<typename base_type<T>::type>::value), "the <T> has to have virtual destructor!!");
+            self::invoke_event(EVENT::E_CTOR, this);
+        }
         /**
          * move ctor
          */
@@ -247,7 +261,14 @@ namespace gc {
             std::enable_if<
                 can_cast_ptr(_Tin, T)>::type>
         inline gc_ptr(const gc_ptr<_Tin>&& gp)
-        { *this = std::move(gp); }
+        {
+            static_assert(
+                !std::is_compound<typename base_type<T>::type>::value ||
+                std::is_same<typename base_type<T>::type, typename base_type<_Tin>::type>::value ||
+                (std::is_base_of<typename base_type<T>::type, typename base_type<_Tin>::type>::value &&
+                std::has_virtual_destructor<typename base_type<T>::type>::value), "the <T> has to have virtual destructor!!");
+            *this = std::move(gp);
+        }
         /**
          * disposes the wrapped ptr
          * @note based on how many gc_ptr referes to wrapped ptr it may or may not free(delete) the
