@@ -92,7 +92,12 @@ namespace gc {
         bool _is_stack = false;
         gc_id_t _register_id =  NOT_REGISTERED;
     };
-
+#define gc_smart_virtual_destructor_check(T, _Tin) \
+        static_assert(!std::is_compound<typename base_type<T>::type>::value || \
+            std::is_same<typename base_type<T>::type, typename base_type<_Tin>::type>::value || \
+            (std::is_base_of<typename base_type<T>::type, typename base_type<_Tin>::type>::value && \
+            std::has_virtual_destructor<typename base_type<T>::type>::value) \
+        ,"expecting the types to have accessible virtual destructor, but there is not one!")
     template<typename T>
     class gc_ptr: protected std::shared_ptr<detail<T>> {
         /**
@@ -206,11 +211,7 @@ namespace gc {
             : self(gc_cast<T*>(in), this->get_id(in), self::gc_delete, false)
 
         {
-            static_assert(
-                !std::is_compound<typename base_type<T>::type>::value ||
-                std::is_same<typename base_type<T>::type, typename base_type<_Tin>::type>::value ||
-                (std::is_base_of<typename base_type<T>::type, typename base_type<_Tin>::type>::value &&
-                std::has_virtual_destructor<typename base_type<T>::type>::value), "the <T> has to have virtual destructor!!");
+            gc_smart_virtual_destructor_check(T, _Tin);
             self::invoke_event(EVENT::E_CTOR, this);
         }
         /**
@@ -227,11 +228,7 @@ namespace gc {
                 self::dont_delete,
                 true)
         {
-            static_assert(
-                !std::is_compound<typename base_type<T>::type>::value ||
-                std::is_same<typename base_type<T>::type, typename base_type<_Tin>::type>::value ||
-                (std::is_base_of<typename base_type<T>::type, typename base_type<_Tin>::type>::value &&
-                std::has_virtual_destructor<typename base_type<T>::type>::value), "the <T> has to have virtual destructor!!");
+            gc_smart_virtual_destructor_check(T, _Tin);
             self::invoke_event(EVENT::E_CTOR, this);
         }
         /**
@@ -247,11 +244,7 @@ namespace gc {
                 this->gc_get_deleter(gp),
                 gp.stack_referred())
         {
-            static_assert(
-                !std::is_compound<typename base_type<T>::type>::value ||
-                std::is_same<typename base_type<T>::type, typename base_type<_Tin>::type>::value ||
-                (std::is_base_of<typename base_type<T>::type, typename base_type<_Tin>::type>::value &&
-                std::has_virtual_destructor<typename base_type<T>::type>::value), "the <T> has to have virtual destructor!!");
+            gc_smart_virtual_destructor_check(T, _Tin);
             self::invoke_event(EVENT::E_CTOR, this);
         }
         /**
@@ -262,11 +255,7 @@ namespace gc {
                 can_cast_ptr(_Tin, T)>::type>
         inline gc_ptr(const gc_ptr<_Tin>&& gp)
         {
-            static_assert(
-                !std::is_compound<typename base_type<T>::type>::value ||
-                std::is_same<typename base_type<T>::type, typename base_type<_Tin>::type>::value ||
-                (std::is_base_of<typename base_type<T>::type, typename base_type<_Tin>::type>::value &&
-                std::has_virtual_destructor<typename base_type<T>::type>::value), "the <T> has to have virtual destructor!!");
+            gc_smart_virtual_destructor_check(T, _Tin);
             *this = std::move(gp);
         }
         /**
