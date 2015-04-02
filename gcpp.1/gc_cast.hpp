@@ -23,14 +23,33 @@ namespace gc {
 #define where typename = typename
 
 #define dyna_cast(_Tout, _Tin) \
-            (!std::is_void<typename base_type<_Tin>::type>::value && !std::is_void<typename base_type<_Tout>::type>::value && \
-            std::is_compound<typename base_type<_Tin>::type>::value && \
-            std::is_base_of<typename base_type<_Tin>::type, typename base_type<_Tin>::type>::value)
+            ( \
+                ( \
+                    std::is_compound<typename base_type<_Tin>::type>::value && \
+                    std::is_base_of< \
+                        typename base_type<_Tin>::type, \
+                        typename base_type<_Tin>::type>::value \
+                ) || \
+                ( \
+                    std::is_compound<typename base_type<_Tin>::type>::value && \
+                    std::is_void<typename base_type<_Tout>::type>::value \
+                ) \
+            )
 
 #define stat_cast(_Tout, _Tin) \
-            (std::is_convertible<typename base_type<_Tin>::type, typename base_type<_Tout>::type>::value && \
-            std::is_fundamental<typename base_type<_Tin>::type>::value && \
-            std::is_fundamental<typename base_type<_Tout>::type>::value)
+            ( \
+                ( \
+                    std::is_convertible< \
+                        typename base_type<_Tin>::type, \
+                        typename base_type<_Tout>::type>::value && \
+                    std::is_fundamental<typename base_type<_Tin>::type>::value && \
+                    std::is_fundamental<typename base_type<_Tout>::type>::value \
+                ) || \
+                ( \
+                    std::is_fundamental<typename base_type<_Tin>::type>::value && \
+                    std::is_void<typename base_type<_Tout>::type>::value \
+                ) \
+            )
 
     /**
      * pointers cast region
