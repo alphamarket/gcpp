@@ -1,3 +1,0 @@
-[submodule "test"]
-	path = test
-	url =  git@github.com:noise2/gcpp.test.git
