@@ -4,7 +4,7 @@
 #include "gc_ptr.hpp"
 namespace gc {
     template<typename T>
-    class gc_array_ptr : protected gc_ptr<gc_array_ptr<T>>, public std::vector<gc::gc_ptr<T>> {
+    class gc_array_ptr : public std::vector<gc::gc_ptr<T>> {
         typedef gc::gc_array_ptr<T>         self;
         typedef gc::gc_ptr<T>               array_elem;
     public:
@@ -32,8 +32,13 @@ namespace gc {
         {
             if(index >= this->size())
                 throw std::out_of_range("index out of range");
-            return std::vector<gc::gc_ptr<T>>::operator[](index).get();
+            return std::vector<array_elem>::operator[](index).get();
         }
+        /**
+         * disposes all allocated memories
+         */
+        void dispose()
+        { std::vector<array_elem>::clear(); }
     };
 }
 #endif // GC_PTR_ARRAY_H
